@@ -21,11 +21,9 @@ function log_error() { echo -e "${ERROR} - $1"; }
 
 # -------------- Banner Inicial --------------
 clear
-echo -e "${BLUE}===============================================================================${RESET}"
 echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
 echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
 echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
-echo -e "${BLUE}===============================================================================${RESET}\n"
 echo -e "${WHITE}                                                                              ${RESET}"
 echo -e "${WHITE}  _______                      __              __                             ${RESET}"
 echo -e "${WHITE} |       \                    |  \            |  \                            ${RESET}"
@@ -154,8 +152,12 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
     echo "Não foi possível detectar IP automaticamente."
     docker swarm init || true
   else
-    echo "Detectamos o IP: $DETECTED_IP"
-    read -p "Este é o IP público? (s/n): " CONF_IP
+    echo
+echo -e "========================================"
+echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+echo -e "========================================\n"
+
+read -p "Este é o IP público? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -183,18 +185,24 @@ sleep 1
 print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
 
 while true; do
-  echo -e "\n--------------------------------------"
+  echo
+  echo "--------------------------------------"
   read -p "Nome da rede interna (overlay): " NETWORK_NAME
   read -p "Nome do servidor (descrição/hostname): " SERVER_NAME
   read -p "E-mail para Let's Encrypt (Traefik): " EMAIL_LETSENCRYPT
   read -p "Domínio para Portainer (ex.: portainer.meudominio.com): " PORTAINER_DOMAIN
 
-  echo -e "\nVocê informou:"
-  echo " - Rede interna: $NETWORK_NAME"
-  echo " - Nome do servidor: $SERVER_NAME"
-  echo " - E-mail: $EMAIL_LETSENCRYPT"
-  echo " - Domínio Portainer: https://$PORTAINER_DOMAIN"
-  
+  # Mensagem centralizada, entre barras
+  echo
+  echo "========================================"
+  echo -e "             Você informou:"
+  echo -e "               - Rede interna: \e[32m$NETWORK_NAME\e[0m"
+  echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
+  echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
+  echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
+  echo "========================================"
+  echo
+
   read -p "Está tudo correto? (s/n): " CONF_ALL
   if [[ "$CONF_ALL" =~ ^[Ss]$ ]]; then
     break
