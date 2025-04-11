@@ -10,9 +10,10 @@ RESET="\e[0m"
 GREEN="\e[32m"
 BLUE="\e[34m"
 WHITE="\e[97m"
+RED="\e[31m"
 OK="[ ${GREEN}OK${RESET} ]"
 INFO="[ ${BLUE}INFO${RESET} ]"
-ERROR="[ \e[31mERRO${RESET} ]"
+ERROR="[ ${RED}ERRO${RESET} ]"
 
 function log_ok()    { echo -e "${OK} - $1"; }
 function log_info()  { echo -e "${INFO} - $1"; }
@@ -237,7 +238,7 @@ services:
           - node.role == manager
       labels:
         - traefik.enable=true
-        - traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
+        - "traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)"
         - traefik.http.services.portainer.loadbalancer.server.port=9000
         - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
         - traefik.http.routers.portainer.service=portainer
@@ -299,9 +300,9 @@ services:
           - node.role == manager
       labels:
         - traefik.enable=true
-        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
-        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
-        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
+        - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
+        - "traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)"
         - traefik.http.routers.http-catchall.entrypoints=web
         - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
         - traefik.http.routers.http-catchall.priority=1
@@ -373,10 +374,15 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo "========================================"
   echo
 
+  # == Mensagem de alerta dos 5 min pro login no Portainer ==
+  echo -e "       ${RED}ATENÇÃO:${RESET} Você tem ${RED}APENAS 5 minutos${RESET} para fazer seu primeiro login no Portainer."
+  echo -e "       Caso ultrapasse esse tempo, será necessário ${RED}refazer toda a instalação.${RESET}"
+  echo
+
   ###################################################
-  # 15/17 - Deploy do Redis (com labels Portainer)
+  # 15/17 - Deploy do Redis (editável no Portainer)
   ###################################################
-  print_step "Gerando stack do Redis (para edição via Portainer)"
+  print_step "Gerando stack do Redis (editável no Portainer)"
   cat > /tmp/stack-redis.yml <<EOF
 version: "3.7"
 
@@ -402,7 +408,7 @@ services:
           - node.role == manager
       labels:
         <<: *portainer_labels
-        # Você pode adicionar outras labels se quiser
+
 volumes:
   redis_data:
     external: true
@@ -427,9 +433,9 @@ EOF
   fi
 
   ###################################################
-  # 16/17 - Deploy do PostgreSQL (com labels Portainer)
+  # 16/17 - Deploy do PostgreSQL (editável)
   ###################################################
-  print_step "Gerando stack do PostgreSQL (para edição via Portainer)"
+  print_step "Gerando stack do PostgreSQL (editável no Portainer)"
   cat > /tmp/stack-postgres.yml <<EOF
 version: "3.7"
 
@@ -495,9 +501,9 @@ EOF
   fi
 
   ###################################################
-  # 17/17 - Coleta e Deploy do MinIO (com labels)
+  # 17/17 - Coleta e Deploy do MinIO (editável)
   ###################################################
-  print_step "Coletando dados e gerando stack do MinIO (para edição via Portainer)"
+  print_step "Coletando dados e gerando stack do MinIO (editável no Portainer)"
 
   while true; do
     echo
@@ -519,7 +525,7 @@ EOF
 
     # Checagem mínima da senha (>= 10 caracteres)
     if [[ ${#MINIO_PASS} -lt 10 ]]; then
-      echo -e "\e[31mA senha deve ter ao menos 10 caracteres!\e[0m"
+      echo -e "${RED}A senha deve ter ao menos 10 caracteres!${RESET}"
       continue
     fi
 
@@ -531,7 +537,6 @@ EOF
   done
   sleep 1
 
-  # Gera o stack-minio.yml com labels Portainer
   cat > /tmp/stack-minio.yml <<EOF
 version: "3.7"
 
@@ -568,7 +573,7 @@ services:
         - traefik.enable=true
 
         # S3 API
-        - traefik.http.routers.minio_public.rule=Host(\`${S3_SUBDOMAIN}\`)
+        - "traefik.http.routers.minio_public.rule=Host(\`${S3_SUBDOMAIN}\`)"
         - traefik.http.routers.minio_public.entrypoints=websecure
         - traefik.http.routers.minio_public.tls.certresolver=letsencryptresolver
         - traefik.http.services.minio_public.loadbalancer.server.port=9000
@@ -576,7 +581,7 @@ services:
         - traefik.http.routers.minio_public.service=minio_public
 
         # Console Web
-        - traefik.http.routers.minio_console.rule=Host(\`${MINIO_SUBDOMAIN}\`)
+        - "traefik.http.routers.minio_console.rule=Host(\`${MINIO_SUBDOMAIN}\`)"
         - traefik.http.routers.minio_console.entrypoints=websecure
         - traefik.http.routers.minio_console.tls.certresolver=letsencryptresolver
         - traefik.http.services.minio_console.loadbalancer.server.port=9001
