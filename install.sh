@@ -1,8 +1,10 @@
+au tinstalador portainer traeifk:
+
 #!/bin/bash
 
 ############################################################
-#  AUTO-INSTALADOR PORTAINER + TRAEFIK + REDIS + POSTGRES + MINIO
-#        Estilo “passo a passo” colorido com Docker Swarm
+#               AUTO-INSTALADOR PORTAINER+TRAEFIK
+#               Estilo “passo a passo” colorido
 ############################################################
 
 # -------------- Cores / Estilos --------------
@@ -10,49 +12,51 @@ RESET="\e[0m"
 GREEN="\e[32m"
 BLUE="\e[34m"
 WHITE="\e[97m"
-RED="\e[31m"
 OK="[ ${GREEN}OK${RESET} ]"
 INFO="[ ${BLUE}INFO${RESET} ]"
-ERROR="[ ${RED}ERRO${RESET} ]"
+ERROR="[ \e[31mERRO${RESET} ]"
 
+# -------------- Funções de Log --------------
 function log_ok()    { echo -e "${OK} - $1"; }
 function log_info()  { echo -e "${INFO} - $1"; }
 function log_error() { echo -e "${ERROR} - $1"; }
-function log_error_exit() { log_error "$1"; exit 1; }
 
 # -------------- Banner Inicial --------------
 clear
-echo -e "${BLUE}===============================================================================${RESET}"
+echo -e "${GREEN}                                                                              ${RESET}"
 echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
 echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
 echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
-echo -e "${BLUE}===============================================================================${RESET}\n"
-echo -e "${WHITE}                                                                               ${RESET}"
-echo -e "${WHITE}  _______                      __              __                              ${RESET}"
-echo -e "${WHITE} |       \                    |  \            |  \                             ${RESET}"
-echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______    ${RESET}"
-echo -e "${WHITE} | ▓▓__/ ▓▓/      \ /      \|   ▓▓ \  |      \|  \       \ /      \ /      \   ${RESET}"
-echo -e "${WHITE} | ▓▓    ▓▓  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\\▓▓▓▓▓▓   \▓▓▓▓▓▓\ ▓▓ ▓▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ${RESET}"
-echo -e "${WHITE} | ▓▓▓▓▓▓▓| ▓▓  | ▓▓ ▓▓   \▓▓ | ▓▓ __ /      ▓▓ ▓▓ ▓▓  | ▓▓ ▓▓    ▓▓ ▓▓   \▓▓  ${RESET}"
-echo -e "${WHITE} | ▓▓     | ▓▓__/ ▓▓ ▓▓       | ▓▓|  \  ▓▓▓▓▓▓▓ ▓▓ ▓▓  | ▓▓ ▓▓▓▓▓▓▓▓ ▓▓        ${RESET}"
-echo -e "${WHITE} | ▓▓      \▓▓    ▓▓ ▓▓        \▓▓  ▓▓\▓▓    ▓▓ ▓▓ ▓▓  | ▓▓\▓▓     \ ▓▓        ${RESET}"
-echo -e "${WHITE}  \▓▓       \▓▓▓▓▓▓ \▓▓         \▓▓▓▓  \▓▓▓▓▓▓▓\▓▓\▓▓   \▓▓ \▓▓▓▓▓▓▓\▓▓        ${RESET}"
-echo -e "${WHITE}                ________                             ______  __ __             ${RESET}"
-echo -e "${WHITE}      __        |        \                           /      \|  \  \           ${RESET}"
-echo -e "${WHITE}     |  \        \▓▓▓▓▓▓▓▓ ______   ______   ______ |  ▓▓▓▓▓▓\\▓▓ ▓▓   __      ${RESET}"
-echo -e "${WHITE}   _ | ▓▓__        | ▓▓   /      \ |      \ /      \| ▓▓_  \▓▓  \ ▓▓  /  \     ${RESET}"
-echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ▓▓ \   | ▓▓ ▓▓_/  ▓▓      ${RESET}"
-echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓       ${RESET}"
-echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\      ${RESET}"
-echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\     ${RESET}"
-echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓      ${RESET}\n"
-
+echo -e "${WHITE}  _______                      __              __                             ${RESET}"
+echo -e "${WHITE} |       \                    |  \            |  \                            ${RESET}"
+echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______   ${RESET}"
+echo -e "${WHITE} | ▓▓__/ ▓▓/      \ /      \|   ▓▓ \  |      \|  \       \ /      \ /      \  ${RESET}"
+echo -e "${WHITE} | ▓▓    ▓▓  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\\▓▓▓▓▓▓   \▓▓▓▓▓▓\ ▓▓ ▓▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ${RESET}"
+echo -e "${WHITE} | ▓▓▓▓▓▓▓| ▓▓  | ▓▓ ▓▓   \▓▓ | ▓▓ __ /      ▓▓ ▓▓ ▓▓  | ▓▓ ▓▓    ▓▓ ▓▓   \▓▓ ${RESET}"
+echo -e "${WHITE} | ▓▓     | ▓▓__/ ▓▓ ▓▓       | ▓▓|  \  ▓▓▓▓▓▓▓ ▓▓ ▓▓  | ▓▓ ▓▓▓▓▓▓▓▓ ▓▓       ${RESET}"
+echo -e "${WHITE} | ▓▓      \▓▓    ▓▓ ▓▓        \▓▓  ▓▓\▓▓    ▓▓ ▓▓ ▓▓  | ▓▓\▓▓     \ ▓▓       ${RESET}"
+echo -e "${WHITE}  \▓▓       \▓▓▓▓▓▓ \▓▓         \▓▓▓▓  \▓▓▓▓▓▓▓\▓▓\▓▓   \▓▓ \▓▓▓▓▓▓▓\▓▓       ${RESET}"
+echo -e "${WHITE}                ________                             ______  __ __            ${RESET}"
+echo -e "${WHITE}      __        |        \                           /      \|  \  \          ${RESET}"
+echo -e "${WHITE}     |  \        \▓▓▓▓▓▓▓▓ ______   ______   ______ |  ▓▓▓▓▓▓\\▓▓ ▓▓   __     ${RESET}"
+echo -e "${WHITE}   _ | ▓▓__        | ▓▓   /      \ |      \ /      \| ▓▓_  \▓▓  \ ▓▓  /  \    ${RESET}"
+echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ▓▓ \   | ▓▓ ▓▓_/  ▓▓    ${RESET}"
+echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓     ${RESET}"
+echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\     ${RESET}"
+echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\    ${RESET}"
+echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}"
+echo -e "${WHITE}    ______ ______ ______ ______ ______ ______ ______ ______ ______ ______     ${RESET}"
+echo -e "${WHITE}   |      \      \      \      \      \      \      \      \      \      \    ${RESET}"
+echo -e "${WHITE}    \▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓    ${RESET}"
+echo -e "${WHITE}                                                                              ${RESET}\n"    
+                                                                                                                                                                                                                                                                                                                                                                                                                              
 sleep 1
 
-# Total de etapas (Portainer+Traefik = 14) + Redis(1) + Postgres(1) + MinIO(1) = 17
-TOTAL_STEPS=17
+# Definimos o total de etapas para ir numerando
+TOTAL_STEPS=14
 STEP=1
 
+# -------------- Helpers para etapas --------------
 function print_step() {
   local msg="$1"
   echo -e "${STEP}/${TOTAL_STEPS} - ${OK} - ${msg}"
@@ -63,7 +67,11 @@ function print_step() {
 # 1/14 - Atualizar Sistema
 #############################################
 print_step "Fazendo Upgrade do sistema (apt-get update && upgrade)"
-sudo apt-get update && sudo apt-get upgrade -y || log_error_exit "Falha ao atualizar o sistema."
+sudo apt-get update && sudo apt-get upgrade -y
+if [ $? -ne 0 ]; then
+  log_error "Falha ao atualizar o sistema."
+  exit 1
+fi
 log_ok "Sistema atualizado com sucesso."
 sleep 1
 
@@ -72,7 +80,11 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando sudo"
 if ! dpkg -l | grep -q sudo; then
-  sudo apt-get install -y sudo || log_error_exit "Falha ao instalar sudo."
+  sudo apt-get install -y sudo
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar sudo."
+    exit 1
+  fi
 fi
 log_ok "sudo OK."
 sleep 1
@@ -82,7 +94,11 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando apt-utils"
 if ! dpkg -l | grep -q apt-utils; then
-  sudo apt-get install -y apt-utils || log_error_exit "Falha ao instalar apt-utils."
+  sudo apt-get install -y apt-utils
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar apt-utils."
+    exit 1
+  fi
 fi
 log_ok "apt-utils OK."
 sleep 1
@@ -92,7 +108,11 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando python3"
 if ! command -v python3 &>/dev/null; then
-  sudo apt-get install -y python3 || log_error_exit "Falha ao instalar python3."
+  sudo apt-get install -y python3
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar python3."
+    exit 1
+  fi
 fi
 log_ok "python3 OK."
 sleep 1
@@ -102,7 +122,11 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando git"
 if ! command -v git &>/dev/null; then
-  sudo apt-get install -y git || log_error_exit "Falha ao instalar git."
+  sudo apt-get install -y git
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar git."
+    exit 1
+  fi
 fi
 log_ok "git OK."
 sleep 1
@@ -113,9 +137,10 @@ sleep 1
 print_step "Verificando/Instalando Docker"
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com -o get-docker.sh
-  sh get-docker.sh || log_error_exit "Falha ao instalar Docker!"
+  sh get-docker.sh
   if ! command -v docker &>/dev/null; then
-    log_error_exit "Falha ao instalar Docker!"
+    log_error "Falha ao instalar Docker!"
+    exit 1
   fi
 fi
 log_ok "Docker OK."
@@ -133,8 +158,12 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
     echo "Não foi possível detectar IP automaticamente."
     docker swarm init || true
   else
-    echo -e "Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
-    read -p "Este é o IP público? (s/n): " CONF_IP
+    echo
+echo -e "========================================"
+echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+echo -e "========================================\n"
+
+read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -143,9 +172,11 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
     fi
   fi
 
+  # Verifica se o Swarm ficou ativo
   SWARM_ACTIVE_AGAIN=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
   if [ "$SWARM_ACTIVE_AGAIN" != "active" ]; then
-    log_error_exit "Falha ao iniciar o Swarm. Verifique IP e tente novamente."
+    log_error "Falha ao iniciar o Swarm. Verifique IP e tente novamente."
+    exit 1
   else
     log_ok "Swarm inicializado com sucesso."
   fi
@@ -155,7 +186,7 @@ fi
 sleep 1
 
 #############################################
-# 8/14 - Coletando dados (Portainer/Traefik)
+# 8/14 - Coletando dados do usuário
 #############################################
 print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
 
@@ -166,14 +197,16 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
+  ...
 
+  # Mensagem centralizada, entre barras
   echo
   echo "========================================"
-  echo "            Você informou:"
-  echo -e "               - Rede interna: \e[33m$NETWORK_NAME\e[0m"
-  echo -e "               - Nome do servidor: \e[33m$SERVER_NAME\e[0m"
-  echo -e "               - E-mail: \e[33m$EMAIL_LETSENCRYPT\e[0m"
-  echo -e "               - Domínio Portainer: \e[33mhttps://$PORTAINER_DOMAIN\e[0m"
+  echo -e "             Você informou:"
+  echo -e "               - Rede interna: \e[32m$NETWORK_NAME\e[0m"
+  echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
+  echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
+  echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
   echo "========================================"
   echo
 
@@ -238,7 +271,7 @@ services:
           - node.role == manager
       labels:
         - traefik.enable=true
-        - "traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)"
+        - traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
         - traefik.http.services.portainer.loadbalancer.server.port=9000
         - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
         - traefik.http.routers.portainer.service=portainer
@@ -300,9 +333,9 @@ services:
           - node.role == manager
       labels:
         - traefik.enable=true
-        - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
-        - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
-        - "traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)"
+        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
+        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
+        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
         - traefik.http.routers.http-catchall.entrypoints=web
         - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
         - traefik.http.routers.http-catchall.priority=1
@@ -354,15 +387,16 @@ docker stack deploy -c /tmp/stack-traefik.yml traefik
 sleep 5
 
 echo -e "\n${OK} - Deploy enviado. Verificando status..."
-sleep 5
 
+# Verifica se temos pelo menos 1 container "Running" em cada stack
+sleep 5
 P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 
 if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo
   echo "========================================"
-  echo -e "       ${GREEN}Portainer e Traefik rodando com sucesso!${RESET}"
+  echo -e "       ${GREEN}Instalação concluída com sucesso!${RESET}"
   echo -e "       ${INFO} - Rede interna: \e[33m$NETWORK_NAME\e[0m"
   echo -e "       ${INFO} - Nome do Servidor: \e[33m$SERVER_NAME\e[0m"
   echo -e "       ${INFO} - E-mail Let's Encrypt: \e[33m$EMAIL_LETSENCRYPT\e[0m"
@@ -374,257 +408,12 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo "========================================"
   echo
 
-  # == Mensagem de alerta dos 5 min pro login no Portainer ==
-  echo -e "       ${RED}ATENÇÃO:${RESET} Você tem ${RED}APENAS 5 minutos${RESET} para fazer seu primeiro login no Portainer."
-  echo -e "       Caso ultrapasse esse tempo, será necessário ${RED}refazer toda a instalação.${RESET}"
+  # Mensagem de destaque sobre prazo de login
+  echo -e "       \e[31mATENÇÃO:\e[0m Você tem \e[31mAPENAS 5 minutos\e[0m para fazer seu primeiro login no Portainer."
+  echo -e "       Caso ultrapasse esse tempo, será necessário \e[31mrefazer toda a instalação.\e[0m"
   echo
-
-  ###################################################
-  # 15/17 - Deploy do Redis (editável no Portainer)
-  ###################################################
-  print_step "Gerando stack do Redis (editável no Portainer)"
-  cat > /tmp/stack-redis.yml <<EOF
-version: "3.7"
-
-x-portainer:
-  &portainer_labels
-  io.portainer.stack.namespace: "redis"
-  io.portainer.stack.name: "redis"
-
-services:
-  redis:
-    image: redis:7
-    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
-    networks:
-      - ${NETWORK_NAME}
-    command: redis-server --appendonly yes --port 6379
-    volumes:
-      - redis_data:/data
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      labels:
-        <<: *portainer_labels
-
-volumes:
-  redis_data:
-    external: true
-    name: redis_data
-
-networks:
-  ${NETWORK_NAME}:
-    external: true
-    name: ${NETWORK_NAME}
-EOF
-
-  docker volume create redis_data
-  docker stack deploy -c /tmp/stack-redis.yml redis
-  sleep 5
-  echo -e "\n${OK} - Deploy do Redis enviado. Verificando status..."
-  sleep 5
-  R_STATUS=$(docker stack ps redis --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
-  if [[ "$R_STATUS" -gt 0 ]]; then
-    log_ok "Redis rodando. (Stack 'redis')"
-  else
-    log_error "Redis não está em Running. Verifique com: docker stack ps redis"
-  fi
-
-  ###################################################
-  # 16/17 - Deploy do PostgreSQL (editável)
-  ###################################################
-  print_step "Gerando stack do PostgreSQL (editável no Portainer)"
-  cat > /tmp/stack-postgres.yml <<EOF
-version: "3.7"
-
-x-portainer:
-  &portainer_labels
-  io.portainer.stack.namespace: "postgres"
-  io.portainer.stack.name: "postgres"
-
-services:
-  postgres:
-    image: postgres:16
-    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
-    networks:
-      - ${NETWORK_NAME}
-    entrypoint: docker-entrypoint.sh
-    command:
-      [
-        "postgres",
-        "--max_connections=200",
-        "--wal_level=minimal",
-        "--max_wal_senders=0",
-        "--port=5432"
-      ]
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_PASSWORD=changeme
-      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      resources:
-        limits:
-          cpus: "1"
-          memory: 1024M
-      labels:
-        <<: *portainer_labels
-
-volumes:
-  postgres_data:
-    external: true
-    name: postgres_data
-
-networks:
-  ${NETWORK_NAME}:
-    external: true
-    name: ${NETWORK_NAME}
-EOF
-
-  docker volume create postgres_data
-  docker stack deploy -c /tmp/stack-postgres.yml postgres
-  sleep 5
-  echo -e "\n${OK} - Deploy do PostgreSQL enviado. Verificando status..."
-  sleep 5
-  PG_STATUS=$(docker stack ps postgres --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
-  if [[ "$PG_STATUS" -gt 0 ]]; then
-    log_ok "PostgreSQL rodando. (Stack 'postgres')"
-  else
-    log_error "PostgreSQL não está em Running. Verifique com: docker stack ps postgres"
-  fi
-
-  ###################################################
-  # 17/17 - Coleta e Deploy do MinIO (editável)
-  ###################################################
-  print_step "Coletando dados e gerando stack do MinIO (editável no Portainer)"
-
-  while true; do
-    echo
-    echo "--------------------------------------"
-    read -p $'\e[33mSubdomínio para MinIO Console (ex.: minio.meudominio.com): \e[0m' MINIO_SUBDOMAIN
-    read -p $'\e[33mSubdomínio para S3 (ex.: s3.meudominio.com): \e[0m' S3_SUBDOMAIN
-    read -p $'\e[33mUsuário root MinIO (ex.: admin): \e[0m' MINIO_USER
-    read -p $'\e[33mSenha root MinIO (mín. 10 chars c/ letras, números e caract. especial): \e[0m' MINIO_PASS
-
-    echo
-    echo "========================================"
-    echo "            Você informou:"
-    echo -e "               - Subdomínio MinIO: \e[33m$MINIO_SUBDOMAIN\e[0m"
-    echo -e "               - Subdomínio S3: \e[33m$S3_SUBDOMAIN\e[0m"
-    echo -e "               - Usuário MinIO: \e[33m$MINIO_USER\e[0m"
-    echo -e "               - Senha MinIO: \e[33m$MINIO_PASS\e[0m"
-    echo "========================================"
-    echo
-
-    # Checagem mínima da senha (>= 10 caracteres)
-    if [[ ${#MINIO_PASS} -lt 10 ]]; then
-      echo -e "${RED}A senha deve ter ao menos 10 caracteres!${RESET}"
-      continue
-    fi
-
-    read -p "Está tudo correto? (s/n): " CONF_MINIO
-    if [[ "$CONF_MINIO" =~ ^[Ss]$ ]]; then
-      break
-    fi
-    echo "Ok, vamos refazer..."
-  done
-  sleep 1
-
-  cat > /tmp/stack-minio.yml <<EOF
-version: "3.7"
-
-x-portainer:
-  &portainer_labels
-  io.portainer.stack.namespace: "minio"
-  io.portainer.stack.name: "minio"
-
-services:
-  minio:
-    image: quay.io/minio/minio:latest
-    command: server /data --console-address ":9001"
-
-    volumes:
-      - minio_data:/data
-
-    networks:
-      - ${NETWORK_NAME}
-
-    environment:
-      - MINIO_ROOT_USER=${MINIO_USER}
-      - MINIO_ROOT_PASSWORD=${MINIO_PASS}
-      - MINIO_BROWSER_REDIRECT_URL=https://${MINIO_SUBDOMAIN}
-      - MINIO_SERVER_URL=https://${S3_SUBDOMAIN}
-
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      labels:
-        <<: *portainer_labels
-        - traefik.enable=true
-
-        # S3 API
-        - "traefik.http.routers.minio_public.rule=Host(\`${S3_SUBDOMAIN}\`)"
-        - traefik.http.routers.minio_public.entrypoints=websecure
-        - traefik.http.routers.minio_public.tls.certresolver=letsencryptresolver
-        - traefik.http.services.minio_public.loadbalancer.server.port=9000
-        - traefik.http.services.minio_public.loadbalancer.passHostHeader=true
-        - traefik.http.routers.minio_public.service=minio_public
-
-        # Console Web
-        - "traefik.http.routers.minio_console.rule=Host(\`${MINIO_SUBDOMAIN}\`)"
-        - traefik.http.routers.minio_console.entrypoints=websecure
-        - traefik.http.routers.minio_console.tls.certresolver=letsencryptresolver
-        - traefik.http.services.minio_console.loadbalancer.server.port=9001
-        - traefik.http.services.minio_console.loadbalancer.passHostHeader=true
-        - traefik.http.routers.minio_console.service=minio_console
-
-volumes:
-  minio_data:
-    external: true
-    name: minio_data
-
-networks:
-  ${NETWORK_NAME}:
-    external: true
-    name: ${NETWORK_NAME}
-EOF
-
-  docker volume create minio_data
-  docker stack deploy -c /tmp/stack-minio.yml minio
-  sleep 5
-  echo -e "\n${OK} - Deploy do MinIO enviado. Verificando status..."
-  sleep 5
-  M_STATUS=$(docker stack ps minio --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
-
-  if [[ "$M_STATUS" -gt 0 ]]; then
-    echo
-    echo "========================================"
-    echo -e "       ${GREEN}MinIO rodando com sucesso!${RESET}"
-    echo -e "       \e[33mConsole:\e[0m https://$MINIO_SUBDOMAIN"
-    echo -e "       \e[33mS3:\e[0m      https://$S3_SUBDOMAIN"
-    echo "========================================"
-    echo
-    echo -e "${GREEN}Instalação COMPLETA (Portainer, Traefik, Redis, PostgreSQL, MinIO) concluída!${RESET}"
-    echo
-  else
-    log_error "MinIO não está em Running. Verifique com: docker stack ps minio"
-    echo "Corrija o problema e tente novamente."
-    exit 1
-  fi
-
 else
-  # Se não rodar Portainer/Traefik, não segue para Redis/Postgres/MinIO
-  log_error "Um ou mais serviços (Portainer/Traefik) não estão em Running."
+  log_error "Um ou mais serviços não estão em Running."
   echo "Verifique com: docker stack ps portainer / traefik"
   echo "Corrija o problema e tente novamente."
   exit 1
