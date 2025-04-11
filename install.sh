@@ -1,6 +1,7 @@
 #!/bin/bash
 # ---------------------------------------------------------------------
-# Auto-instalador de Portainer + Traefik (Swarm) - Versão "um comando"
+# Auto-instalador de Portainer + Traefik (Swarm)
+# Verifica IP automaticamente e pergunta confirmação ao usuário
 # ---------------------------------------------------------------------
 
 OK="[ \e[32mOK\e[0m ]"
@@ -67,10 +68,36 @@ log_ok "Docker OK."
 # 3. Inicializando Swarm se não estiver ativo
 # -----------------------------------------
 SWARM_ACTIVE=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
+
 if [ "$SWARM_ACTIVE" != "active" ]; then
-  log_info "Inicializando Docker Swarm (não estava ativo)..."
-  docker swarm init
-  log_ok "Swarm inicializado."
+  log_info "Docker Swarm não está ativo. Tentando iniciar..."
+
+  # Tenta detectar o primeiro IPv4 local
+  DETECTED_IP=$(hostname -I | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+
+  if [ -z "$DETECTED_IP" ]; then
+    # Se não conseguiu detectar nada, tenta iniciar sem param
+    log_info "Não foi possível detectar IP automaticamente. Iniciando sem --advertise-addr..."
+    docker swarm init || true
+  else
+    # Pede confirmação ao usuário se aquele IP é o público
+    echo "Detectamos o seguinte IP: $DETECTED_IP"
+    read -p "Este IP é o seu IPv4 público? (s/n) " CONF_IP
+    if [[ "$CONF_IP" == "s" || "$CONF_IP" == "S" ]]; then
+      docker swarm init --advertise-addr "$DETECTED_IP" || true
+    else
+      read -p "Informe o IP público IPv4 correto: " USER_IP
+      docker swarm init --advertise-addr "$USER_IP" || true
+    fi
+  fi
+
+  # Verifica se deu certo ou não
+  SWARM_ACTIVE_AGAIN=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
+  if [ "$SWARM_ACTIVE_AGAIN" != "active" ]; then
+    log_error "Falha ao inicializar o Docker Swarm."
+  else
+    log_ok "Swarm inicializado."
+  fi
 fi
 
 # -----------------------------------------
@@ -254,5 +281,7 @@ echo -e "${INFO} - Nome do Servidor: ${SERVER_NAME}"
 echo -e "${INFO} - E-mail Let's Encrypt: ${EMAIL_LETSENCRYPT}"
 echo -e "${INFO} - Domínio do Portainer: https://${PORTAINER_DOMAIN}"
 echo "------------------------------------------------------------"
-echo "Verifique se os serviços subiram corretamente com: docker stack ps portainer e docker stack ps traefik"
+echo "Verifique se os serviços subiram corretamente com:"
+echo "  docker stack ps portainer"
+echo "  docker stack ps traefik"
 echo "------------------------------------------------------------"
