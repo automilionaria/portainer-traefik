@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ############################################################
-#     AUTO-INSTALADOR PORTAINER + TRAEFIK + MINIO
-#           Estilo “passo a passo” colorido
+#  AUTO-INSTALADOR PORTAINER + TRAEFIK + REDIS + POSTGRES + MINIO
+#        Estilo “passo a passo” colorido com Docker Swarm
 ############################################################
 
 # -------------- Cores / Estilos --------------
@@ -17,6 +17,7 @@ ERROR="[ \e[31mERRO${RESET} ]"
 function log_ok()    { echo -e "${OK} - $1"; }
 function log_info()  { echo -e "${INFO} - $1"; }
 function log_error() { echo -e "${ERROR} - $1"; }
+function log_error_exit() { log_error "$1"; exit 1; }
 
 # -------------- Banner Inicial --------------
 clear
@@ -25,42 +26,36 @@ echo -e "${GREEN}                           .-----------------------.           
 echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
 echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
 echo -e "${BLUE}===============================================================================${RESET}\n"
-echo -e "${WHITE}                                                                              ${RESET}"
-echo -e "${WHITE}  _______                      __              __                             ${RESET}"
-echo -e "${WHITE} |       \                    |  \            |  \                            ${RESET}"
-echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______   ${RESET}"
-echo -e "${WHITE} | ▓▓__/ ▓▓/      \ /      \|   ▓▓ \  |      \|  \       \ /      \ /      \  ${RESET}"
-echo -e "${WHITE} | ▓▓    ▓▓  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\\▓▓▓▓▓▓   \▓▓▓▓▓▓\ ▓▓ ▓▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ${RESET}"
-echo -e "${WHITE} | ▓▓▓▓▓▓▓| ▓▓  | ▓▓ ▓▓   \▓▓ | ▓▓ __ /      ▓▓ ▓▓ ▓▓  | ▓▓ ▓▓    ▓▓ ▓▓   \▓▓ ${RESET}"
-echo -e "${WHITE} | ▓▓     | ▓▓__/ ▓▓ ▓▓       | ▓▓|  \  ▓▓▓▓▓▓▓ ▓▓ ▓▓  | ▓▓ ▓▓▓▓▓▓▓▓ ▓▓       ${RESET}"
-echo -e "${WHITE} | ▓▓      \▓▓    ▓▓ ▓▓        \▓▓  ▓▓\▓▓    ▓▓ ▓▓ ▓▓  | ▓▓\▓▓     \ ▓▓       ${RESET}"
-echo -e "${WHITE}  \▓▓       \▓▓▓▓▓▓ \▓▓         \▓▓▓▓  \▓▓▓▓▓▓▓\▓▓\▓▓   \▓▓ \▓▓▓▓▓▓▓\▓▓       ${RESET}"
-echo -e "${WHITE}                ________                             ______  __ __            ${RESET}"
-echo -e "${WHITE}      __        |        \                           /      \|  \  \          ${RESET}"
-echo -e "${WHITE}     |  \        \▓▓▓▓▓▓▓▓ ______   ______   ______ |  ▓▓▓▓▓▓\\▓▓ ▓▓   __     ${RESET}"
-echo -e "${WHITE}   _ | ▓▓__        | ▓▓   /      \ |      \ /      \| ▓▓_  \▓▓  \ ▓▓  /  \    ${RESET}"
-echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ▓▓ \   | ▓▓ ▓▓_/  ▓▓    ${RESET}"
-echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓     ${RESET}"
-echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\     ${RESET}"
-echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\    ${RESET}"
-echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}\n"
+echo -e "${WHITE}                                                                               ${RESET}"
+echo -e "${WHITE}  _______                      __              __                              ${RESET}"
+echo -e "${WHITE} |       \                    |  \            |  \                             ${RESET}"
+echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______    ${RESET}"
+echo -e "${WHITE} | ▓▓__/ ▓▓/      \ /      \|   ▓▓ \  |      \|  \       \ /      \ /      \   ${RESET}"
+echo -e "${WHITE} | ▓▓    ▓▓  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\\▓▓▓▓▓▓   \▓▓▓▓▓▓\ ▓▓ ▓▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ${RESET}"
+echo -e "${WHITE} | ▓▓▓▓▓▓▓| ▓▓  | ▓▓ ▓▓   \▓▓ | ▓▓ __ /      ▓▓ ▓▓ ▓▓  | ▓▓ ▓▓    ▓▓ ▓▓   \▓▓  ${RESET}"
+echo -e "${WHITE} | ▓▓     | ▓▓__/ ▓▓ ▓▓       | ▓▓|  \  ▓▓▓▓▓▓▓ ▓▓ ▓▓  | ▓▓ ▓▓▓▓▓▓▓▓ ▓▓        ${RESET}"
+echo -e "${WHITE} | ▓▓      \▓▓    ▓▓ ▓▓        \▓▓  ▓▓\▓▓    ▓▓ ▓▓ ▓▓  | ▓▓\▓▓     \ ▓▓        ${RESET}"
+echo -e "${WHITE}  \▓▓       \▓▓▓▓▓▓ \▓▓         \▓▓▓▓  \▓▓▓▓▓▓▓\▓▓\▓▓   \▓▓ \▓▓▓▓▓▓▓\▓▓        ${RESET}"
+echo -e "${WHITE}                ________                             ______  __ __             ${RESET}"
+echo -e "${WHITE}      __        |        \                           /      \|  \  \           ${RESET}"
+echo -e "${WHITE}     |  \        \▓▓▓▓▓▓▓▓ ______   ______   ______ |  ▓▓▓▓▓▓\\▓▓ ▓▓   __      ${RESET}"
+echo -e "${WHITE}   _ | ▓▓__        | ▓▓   /      \ |      \ /      \| ▓▓_  \▓▓  \ ▓▓  /  \     ${RESET}"
+echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ▓▓ \   | ▓▓ ▓▓_/  ▓▓      ${RESET}"
+echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓       ${RESET}"
+echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\      ${RESET}"
+echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\     ${RESET}"
+echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓      ${RESET}\n"
 
 sleep 1
 
-# Definimos o total de etapas para ir numerando
-TOTAL_STEPS=14
+# Total de etapas (Portainer+Traefik = 14) + Redis(1) + Postgres(1) + MinIO(1) = 17
+TOTAL_STEPS=17
 STEP=1
 
-# -------------- Helpers para etapas --------------
 function print_step() {
   local msg="$1"
   echo -e "${STEP}/${TOTAL_STEPS} - ${OK} - ${msg}"
   STEP=$((STEP+1))
-}
-
-function log_error_exit() {
-  log_error "$1"
-  exit 1
 }
 
 #############################################
@@ -159,7 +154,7 @@ fi
 sleep 1
 
 #############################################
-# 8/14 - Coletando dados do usuário (Portainer)
+# 8/14 - Coletando dados (Portainer/Traefik)
 #############################################
 print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
 
@@ -358,9 +353,8 @@ docker stack deploy -c /tmp/stack-traefik.yml traefik
 sleep 5
 
 echo -e "\n${OK} - Deploy enviado. Verificando status..."
-
-# Verifica se temos pelo menos 1 container "Running" em cada stack
 sleep 5
+
 P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 
@@ -379,12 +373,131 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo "========================================"
   echo
 
-  # ================================================
-  # Prossegue instalação do MinIO (passos 15/16)
-  # ================================================
-  STEP=$((STEP+1))
-  TOTAL_STEPS=$((TOTAL_STEPS+2))  # Se quiser exibir 16/16 ao final
-  print_step "Coletando dados (MinIO subdomínios, usuário, senha)"
+  ###################################################
+  # 15/17 - Deploy do Redis (com labels Portainer)
+  ###################################################
+  print_step "Gerando stack do Redis (para edição via Portainer)"
+  cat > /tmp/stack-redis.yml <<EOF
+version: "3.7"
+
+x-portainer:
+  &portainer_labels
+  io.portainer.stack.namespace: "redis"
+  io.portainer.stack.name: "redis"
+
+services:
+  redis:
+    image: redis:7
+    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
+    networks:
+      - ${NETWORK_NAME}
+    command: redis-server --appendonly yes --port 6379
+    volumes:
+      - redis_data:/data
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        <<: *portainer_labels
+        # Você pode adicionar outras labels se quiser
+volumes:
+  redis_data:
+    external: true
+    name: redis_data
+
+networks:
+  ${NETWORK_NAME}:
+    external: true
+    name: ${NETWORK_NAME}
+EOF
+
+  docker volume create redis_data
+  docker stack deploy -c /tmp/stack-redis.yml redis
+  sleep 5
+  echo -e "\n${OK} - Deploy do Redis enviado. Verificando status..."
+  sleep 5
+  R_STATUS=$(docker stack ps redis --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+  if [[ "$R_STATUS" -gt 0 ]]; then
+    log_ok "Redis rodando. (Stack 'redis')"
+  else
+    log_error "Redis não está em Running. Verifique com: docker stack ps redis"
+  fi
+
+  ###################################################
+  # 16/17 - Deploy do PostgreSQL (com labels Portainer)
+  ###################################################
+  print_step "Gerando stack do PostgreSQL (para edição via Portainer)"
+  cat > /tmp/stack-postgres.yml <<EOF
+version: "3.7"
+
+x-portainer:
+  &portainer_labels
+  io.portainer.stack.namespace: "postgres"
+  io.portainer.stack.name: "postgres"
+
+services:
+  postgres:
+    image: postgres:16
+    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
+    networks:
+      - ${NETWORK_NAME}
+    entrypoint: docker-entrypoint.sh
+    command:
+      [
+        "postgres",
+        "--max_connections=200",
+        "--wal_level=minimal",
+        "--max_wal_senders=0",
+        "--port=5432"
+      ]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1024M
+      labels:
+        <<: *portainer_labels
+
+volumes:
+  postgres_data:
+    external: true
+    name: postgres_data
+
+networks:
+  ${NETWORK_NAME}:
+    external: true
+    name: ${NETWORK_NAME}
+EOF
+
+  docker volume create postgres_data
+  docker stack deploy -c /tmp/stack-postgres.yml postgres
+  sleep 5
+  echo -e "\n${OK} - Deploy do PostgreSQL enviado. Verificando status..."
+  sleep 5
+  PG_STATUS=$(docker stack ps postgres --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+  if [[ "$PG_STATUS" -gt 0 ]]; then
+    log_ok "PostgreSQL rodando. (Stack 'postgres')"
+  else
+    log_error "PostgreSQL não está em Running. Verifique com: docker stack ps postgres"
+  fi
+
+  ###################################################
+  # 17/17 - Coleta e Deploy do MinIO (com labels)
+  ###################################################
+  print_step "Coletando dados e gerando stack do MinIO (para edição via Portainer)"
 
   while true; do
     echo
@@ -392,7 +505,7 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
     read -p $'\e[33mSubdomínio para MinIO Console (ex.: minio.meudominio.com): \e[0m' MINIO_SUBDOMAIN
     read -p $'\e[33mSubdomínio para S3 (ex.: s3.meudominio.com): \e[0m' S3_SUBDOMAIN
     read -p $'\e[33mUsuário root MinIO (ex.: admin): \e[0m' MINIO_USER
-    read -p $'\e[33mSenha root MinIO (mín. 10 chars, letras, números e caract. especial): \e[0m' MINIO_PASS
+    read -p $'\e[33mSenha root MinIO (mín. 10 chars c/ letras, números e caract. especial): \e[0m' MINIO_PASS
 
     echo
     echo "========================================"
@@ -404,7 +517,7 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
     echo "========================================"
     echo
 
-    # Checagem mínima da senha
+    # Checagem mínima da senha (>= 10 caracteres)
     if [[ ${#MINIO_PASS} -lt 10 ]]; then
       echo -e "\e[31mA senha deve ter ao menos 10 caracteres!\e[0m"
       continue
@@ -418,16 +531,14 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   done
   sleep 1
 
-  # ====================================
-  # 16/16 - Gerando e Deploy do MinIO
-  # ====================================
-  STEP=$((STEP+1))
-  print_step "Gerando stack do MinIO e fazendo deploy"
-
-  docker volume create minio_data
-
+  # Gera o stack-minio.yml com labels Portainer
   cat > /tmp/stack-minio.yml <<EOF
 version: "3.7"
+
+x-portainer:
+  &portainer_labels
+  io.portainer.stack.namespace: "minio"
+  io.portainer.stack.name: "minio"
 
 services:
   minio:
@@ -453,6 +564,7 @@ services:
         constraints:
           - node.role == manager
       labels:
+        <<: *portainer_labels
         - traefik.enable=true
 
         # S3 API
@@ -482,9 +594,9 @@ networks:
     name: ${NETWORK_NAME}
 EOF
 
+  docker volume create minio_data
   docker stack deploy -c /tmp/stack-minio.yml minio
   sleep 5
-
   echo -e "\n${OK} - Deploy do MinIO enviado. Verificando status..."
   sleep 5
   M_STATUS=$(docker stack ps minio --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
@@ -497,7 +609,7 @@ EOF
     echo -e "       \e[33mS3:\e[0m      https://$S3_SUBDOMAIN"
     echo "========================================"
     echo
-    echo -e "${GREEN}Instalação COMPLETA (Portainer, Traefik, MinIO) concluída!${RESET}"
+    echo -e "${GREEN}Instalação COMPLETA (Portainer, Traefik, Redis, PostgreSQL, MinIO) concluída!${RESET}"
     echo
   else
     log_error "MinIO não está em Running. Verifique com: docker stack ps minio"
@@ -506,7 +618,7 @@ EOF
   fi
 
 else
-  # Se não rodar Portainer/Traefik, não segue para MinIO
+  # Se não rodar Portainer/Traefik, não segue para Redis/Postgres/MinIO
   log_error "Um ou mais serviços (Portainer/Traefik) não estão em Running."
   echo "Verifique com: docker stack ps portainer / traefik"
   echo "Corrija o problema e tente novamente."
