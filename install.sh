@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ############################################################
-#               AUTO-INSTALADOR PORTAINER+TRAEFIK
-#               Estilo “passo a passo” colorido
+#     AUTO-INSTALADOR PORTAINER + TRAEFIK + MINIO
+#           Estilo “passo a passo” colorido
 ############################################################
 
 # -------------- Cores / Estilos --------------
@@ -14,17 +14,18 @@ OK="[ ${GREEN}OK${RESET} ]"
 INFO="[ ${BLUE}INFO${RESET} ]"
 ERROR="[ \e[31mERRO${RESET} ]"
 
-# -------------- Funções de Log --------------
 function log_ok()    { echo -e "${OK} - $1"; }
 function log_info()  { echo -e "${INFO} - $1"; }
 function log_error() { echo -e "${ERROR} - $1"; }
 
 # -------------- Banner Inicial --------------
 clear
-echo -e "${GREEN}                                                                              ${RESET}"
+echo -e "${BLUE}===============================================================================${RESET}"
 echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
 echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
 echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
+echo -e "${BLUE}===============================================================================${RESET}\n"
+echo -e "${WHITE}                                                                              ${RESET}"
 echo -e "${WHITE}  _______                      __              __                             ${RESET}"
 echo -e "${WHITE} |       \                    |  \            |  \                            ${RESET}"
 echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______   ${RESET}"
@@ -42,12 +43,8 @@ echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓
 echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓     ${RESET}"
 echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\     ${RESET}"
 echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\    ${RESET}"
-echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}"
-echo -e "${WHITE}    ______ ______ ______ ______ ______ ______ ______ ______ ______ ______     ${RESET}"
-echo -e "${WHITE}   |      \      \      \      \      \      \      \      \      \      \    ${RESET}"
-echo -e "${WHITE}    \▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓    ${RESET}"
-echo -e "${WHITE}                                                                              ${RESET}\n"    
-                                                                                                                                                                                                                                                                                                                                                                                                                              
+echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}\n"
+
 sleep 1
 
 # Definimos o total de etapas para ir numerando
@@ -61,15 +58,16 @@ function print_step() {
   STEP=$((STEP+1))
 }
 
+function log_error_exit() {
+  log_error "$1"
+  exit 1
+}
+
 #############################################
 # 1/14 - Atualizar Sistema
 #############################################
 print_step "Fazendo Upgrade do sistema (apt-get update && upgrade)"
-sudo apt-get update && sudo apt-get upgrade -y
-if [ $? -ne 0 ]; then
-  log_error "Falha ao atualizar o sistema."
-  exit 1
-fi
+sudo apt-get update && sudo apt-get upgrade -y || log_error_exit "Falha ao atualizar o sistema."
 log_ok "Sistema atualizado com sucesso."
 sleep 1
 
@@ -78,11 +76,7 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando sudo"
 if ! dpkg -l | grep -q sudo; then
-  sudo apt-get install -y sudo
-  if [ $? -ne 0 ]; then
-    log_error "Falha ao instalar sudo."
-    exit 1
-  fi
+  sudo apt-get install -y sudo || log_error_exit "Falha ao instalar sudo."
 fi
 log_ok "sudo OK."
 sleep 1
@@ -92,11 +86,7 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando apt-utils"
 if ! dpkg -l | grep -q apt-utils; then
-  sudo apt-get install -y apt-utils
-  if [ $? -ne 0 ]; then
-    log_error "Falha ao instalar apt-utils."
-    exit 1
-  fi
+  sudo apt-get install -y apt-utils || log_error_exit "Falha ao instalar apt-utils."
 fi
 log_ok "apt-utils OK."
 sleep 1
@@ -106,11 +96,7 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando python3"
 if ! command -v python3 &>/dev/null; then
-  sudo apt-get install -y python3
-  if [ $? -ne 0 ]; then
-    log_error "Falha ao instalar python3."
-    exit 1
-  fi
+  sudo apt-get install -y python3 || log_error_exit "Falha ao instalar python3."
 fi
 log_ok "python3 OK."
 sleep 1
@@ -120,11 +106,7 @@ sleep 1
 #############################################
 print_step "Verificando/Instalando git"
 if ! command -v git &>/dev/null; then
-  sudo apt-get install -y git
-  if [ $? -ne 0 ]; then
-    log_error "Falha ao instalar git."
-    exit 1
-  fi
+  sudo apt-get install -y git || log_error_exit "Falha ao instalar git."
 fi
 log_ok "git OK."
 sleep 1
@@ -135,10 +117,9 @@ sleep 1
 print_step "Verificando/Instalando Docker"
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com -o get-docker.sh
-  sh get-docker.sh
+  sh get-docker.sh || log_error_exit "Falha ao instalar Docker!"
   if ! command -v docker &>/dev/null; then
-    log_error "Falha ao instalar Docker!"
-    exit 1
+    log_error_exit "Falha ao instalar Docker!"
   fi
 fi
 log_ok "Docker OK."
@@ -156,12 +137,8 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
     echo "Não foi possível detectar IP automaticamente."
     docker swarm init || true
   else
-    echo
-echo -e "========================================"
-echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
-echo -e "========================================\n"
-
-read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
+    echo -e "Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+    read -p "Este é o IP público? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -170,11 +147,9 @@ read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
     fi
   fi
 
-  # Verifica se o Swarm ficou ativo
   SWARM_ACTIVE_AGAIN=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
   if [ "$SWARM_ACTIVE_AGAIN" != "active" ]; then
-    log_error "Falha ao iniciar o Swarm. Verifique IP e tente novamente."
-    exit 1
+    log_error_exit "Falha ao iniciar o Swarm. Verifique IP e tente novamente."
   else
     log_ok "Swarm inicializado com sucesso."
   fi
@@ -184,7 +159,7 @@ fi
 sleep 1
 
 #############################################
-# 8/14 - Coletando dados do usuário
+# 8/14 - Coletando dados do usuário (Portainer)
 #############################################
 print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
 
@@ -195,16 +170,14 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
-  ...
 
-  # Mensagem centralizada, entre barras
   echo
   echo "========================================"
-  echo -e "             Você informou:"
-  echo -e "               - Rede interna: \e[32m$NETWORK_NAME\e[0m"
-  echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
-  echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
-  echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
+  echo "            Você informou:"
+  echo -e "               - Rede interna: \e[33m$NETWORK_NAME\e[0m"
+  echo -e "               - Nome do servidor: \e[33m$SERVER_NAME\e[0m"
+  echo -e "               - E-mail: \e[33m$EMAIL_LETSENCRYPT\e[0m"
+  echo -e "               - Domínio Portainer: \e[33mhttps://$PORTAINER_DOMAIN\e[0m"
   echo "========================================"
   echo
 
@@ -394,7 +367,7 @@ T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | gr
 if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo
   echo "========================================"
-  echo -e "       ${GREEN}Instalação concluída com sucesso!${RESET}"
+  echo -e "       ${GREEN}Portainer e Traefik rodando com sucesso!${RESET}"
   echo -e "       ${INFO} - Rede interna: \e[33m$NETWORK_NAME\e[0m"
   echo -e "       ${INFO} - Nome do Servidor: \e[33m$SERVER_NAME\e[0m"
   echo -e "       ${INFO} - E-mail Let's Encrypt: \e[33m$EMAIL_LETSENCRYPT\e[0m"
@@ -406,12 +379,135 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo "========================================"
   echo
 
-  # Mensagem de destaque sobre prazo de login
-  echo -e "       \e[31mATENÇÃO:\e[0m Você tem \e[31mAPENAS 5 minutos\e[0m para fazer seu primeiro login no Portainer."
-  echo -e "       Caso ultrapasse esse tempo, será necessário \e[31mrefazer toda a instalação.\e[0m"
-  echo
+  # ================================================
+  # Prossegue instalação do MinIO (passos 15/16)
+  # ================================================
+  STEP=$((STEP+1))
+  TOTAL_STEPS=$((TOTAL_STEPS+2))  # Se quiser exibir 16/16 ao final
+  print_step "Coletando dados (MinIO subdomínios, usuário, senha)"
+
+  while true; do
+    echo
+    echo "--------------------------------------"
+    read -p $'\e[33mSubdomínio para MinIO Console (ex.: minio.meudominio.com): \e[0m' MINIO_SUBDOMAIN
+    read -p $'\e[33mSubdomínio para S3 (ex.: s3.meudominio.com): \e[0m' S3_SUBDOMAIN
+    read -p $'\e[33mUsuário root MinIO (ex.: admin): \e[0m' MINIO_USER
+    read -p $'\e[33mSenha root MinIO (mín. 10 chars, letras, números e caract. especial): \e[0m' MINIO_PASS
+
+    echo
+    echo "========================================"
+    echo "            Você informou:"
+    echo -e "               - Subdomínio MinIO: \e[33m$MINIO_SUBDOMAIN\e[0m"
+    echo -e "               - Subdomínio S3: \e[33m$S3_SUBDOMAIN\e[0m"
+    echo -e "               - Usuário MinIO: \e[33m$MINIO_USER\e[0m"
+    echo -e "               - Senha MinIO: \e[33m$MINIO_PASS\e[0m"
+    echo "========================================"
+    echo
+
+    # Checagem mínima da senha
+    if [[ ${#MINIO_PASS} -lt 10 ]]; then
+      echo -e "\e[31mA senha deve ter ao menos 10 caracteres!\e[0m"
+      continue
+    fi
+
+    read -p "Está tudo correto? (s/n): " CONF_MINIO
+    if [[ "$CONF_MINIO" =~ ^[Ss]$ ]]; then
+      break
+    fi
+    echo "Ok, vamos refazer..."
+  done
+  sleep 1
+
+  # ====================================
+  # 16/16 - Gerando e Deploy do MinIO
+  # ====================================
+  STEP=$((STEP+1))
+  print_step "Gerando stack do MinIO e fazendo deploy"
+
+  docker volume create minio_data
+
+  cat > /tmp/stack-minio.yml <<EOF
+version: "3.7"
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+
+    volumes:
+      - minio_data:/data
+
+    networks:
+      - ${NETWORK_NAME}
+
+    environment:
+      - MINIO_ROOT_USER=${MINIO_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_PASS}
+      - MINIO_BROWSER_REDIRECT_URL=https://${MINIO_SUBDOMAIN}
+      - MINIO_SERVER_URL=https://${S3_SUBDOMAIN}
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+
+        # S3 API
+        - traefik.http.routers.minio_public.rule=Host(\`${S3_SUBDOMAIN}\`)
+        - traefik.http.routers.minio_public.entrypoints=websecure
+        - traefik.http.routers.minio_public.tls.certresolver=letsencryptresolver
+        - traefik.http.services.minio_public.loadbalancer.server.port=9000
+        - traefik.http.services.minio_public.loadbalancer.passHostHeader=true
+        - traefik.http.routers.minio_public.service=minio_public
+
+        # Console Web
+        - traefik.http.routers.minio_console.rule=Host(\`${MINIO_SUBDOMAIN}\`)
+        - traefik.http.routers.minio_console.entrypoints=websecure
+        - traefik.http.routers.minio_console.tls.certresolver=letsencryptresolver
+        - traefik.http.services.minio_console.loadbalancer.server.port=9001
+        - traefik.http.services.minio_console.loadbalancer.passHostHeader=true
+        - traefik.http.routers.minio_console.service=minio_console
+
+volumes:
+  minio_data:
+    external: true
+    name: minio_data
+
+networks:
+  ${NETWORK_NAME}:
+    external: true
+    name: ${NETWORK_NAME}
+EOF
+
+  docker stack deploy -c /tmp/stack-minio.yml minio
+  sleep 5
+
+  echo -e "\n${OK} - Deploy do MinIO enviado. Verificando status..."
+  sleep 5
+  M_STATUS=$(docker stack ps minio --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+
+  if [[ "$M_STATUS" -gt 0 ]]; then
+    echo
+    echo "========================================"
+    echo -e "       ${GREEN}MinIO rodando com sucesso!${RESET}"
+    echo -e "       \e[33mConsole:\e[0m https://$MINIO_SUBDOMAIN"
+    echo -e "       \e[33mS3:\e[0m      https://$S3_SUBDOMAIN"
+    echo "========================================"
+    echo
+    echo -e "${GREEN}Instalação COMPLETA (Portainer, Traefik, MinIO) concluída!${RESET}"
+    echo
+  else
+    log_error "MinIO não está em Running. Verifique com: docker stack ps minio"
+    echo "Corrija o problema e tente novamente."
+    exit 1
+  fi
+
 else
-  log_error "Um ou mais serviços não estão em Running."
+  # Se não rodar Portainer/Traefik, não segue para MinIO
+  log_error "Um ou mais serviços (Portainer/Traefik) não estão em Running."
   echo "Verifique com: docker stack ps portainer / traefik"
   echo "Corrija o problema e tente novamente."
   exit 1
