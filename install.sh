@@ -24,7 +24,6 @@ clear
 echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
 echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
 echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
-echo -e "${WHITE}                                                                              ${RESET}"
 echo -e "${WHITE}  _______                      __              __                             ${RESET}"
 echo -e "${WHITE} |       \                    |  \            |  \                            ${RESET}"
 echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______   ${RESET}"
@@ -387,12 +386,24 @@ P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | 
 T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 
 if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
-  echo -e "${GREEN}Instalação concluída com sucesso!${RESET}"
-  echo -e "${INFO} - Rede interna: $NETWORK_NAME"
-  echo -e "${INFO} - Nome do Servidor: $SERVER_NAME"
-  echo -e "${INFO} - E-mail Let's Encrypt: $EMAIL_LETSENCRYPT"
-  echo -e "${INFO} - Domínio do Portainer: https://${PORTAINER_DOMAIN}"
-  echo -e "${BLUE}Para verificar detalhes:\n  docker stack ps portainer\n  docker stack ps traefik${RESET}"
+  echo
+  echo "========================================"
+  echo -e "       ${GREEN}Instalação concluída com sucesso!${RESET}"
+  echo -e "       ${INFO} - Rede interna: \e[33m$NETWORK_NAME\e[0m"
+  echo -e "       ${INFO} - Nome do Servidor: \e[33m$SERVER_NAME\e[0m"
+  echo -e "       ${INFO} - E-mail Let's Encrypt: \e[33m$EMAIL_LETSENCRYPT\e[0m"
+  echo -e "       ${INFO} - Domínio do Portainer: \e[33mhttps://${PORTAINER_DOMAIN}\e[0m"
+  echo
+  echo -e "       ${BLUE}Para verificar detalhes:${RESET}"
+  echo -e "       docker stack ps portainer"
+  echo -e "       docker stack ps traefik"
+  echo "========================================"
+  echo
+
+  # Mensagem de destaque sobre prazo de login
+  echo -e "       \e[31mATENÇÃO:\e[0m Você tem \e[31mAPENAS 5 minutos\e[0m para fazer seu primeiro login no Portainer."
+  echo -e "       Caso ultrapasse esse tempo, será necessário \e[31mrefazer toda a instalação.\e[0m"
+  echo
 else
   log_error "Um ou mais serviços não estão em Running."
   echo "Verifique com: docker stack ps portainer / traefik"
