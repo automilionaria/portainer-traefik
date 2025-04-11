@@ -21,6 +21,7 @@ function log_error() { echo -e "${ERROR} - $1"; }
 
 # -------------- Banner Inicial --------------
 clear
+echo -e "${GREEN}                                                                              ${RESET}"
 echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
 echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
 echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
@@ -41,8 +42,12 @@ echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓
 echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓     ${RESET}"
 echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\     ${RESET}"
 echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\    ${RESET}"
-echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}\n"
-
+echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}"
+echo -e "${WHITE}    ______ ______ ______ ______ ______ ______ ______ ______ ______ ______     ${RESET}"
+echo -e "${WHITE}   |      \      \      \      \      \      \      \      \      \      \    ${RESET}"
+echo -e "${WHITE}    \▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓    ${RESET}"
+echo -e "${WHITE}                                                                              ${RESET}\n"    
+                                                                                                                                                                                                                                                                                                                                                                                                                              
 sleep 1
 
 # Definimos o total de etapas para ir numerando
