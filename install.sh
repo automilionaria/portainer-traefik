@@ -161,7 +161,7 @@ echo -e "========================================"
 echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
 echo -e "========================================\n"
 
-read -p "Este é o IP público? (s/n): " CONF_IP
+read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -191,10 +191,11 @@ print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)
 while true; do
   echo
   echo "--------------------------------------"
-  read -p "Nome da rede interna (overlay): " NETWORK_NAME
-  read -p "Nome do servidor (descrição/hostname): " SERVER_NAME
-  read -p "E-mail para Let's Encrypt (Traefik): " EMAIL_LETSENCRYPT
-  read -p "Domínio para Portainer (ex.: portainer.meudominio.com): " PORTAINER_DOMAIN
+  read -p $'\e[33mNome da rede interna (overlay): \e[0m' NETWORK_NAME
+  read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
+  read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
+  read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
+  ...
 
   # Mensagem centralizada, entre barras
   echo
