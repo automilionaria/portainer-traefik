@@ -1,163 +1,151 @@
 #!/bin/bash
-# ---------------------------------------------------------------------
-# Auto-instalador de Portainer + Traefik (Swarm)
-#  - Exibe progresso em "etapas" ao atualizar pacotes
-#  - Pede confirmação de IP e dados de rede
-#  - Possibilidade de refazer do zero se algo falhar
-# ---------------------------------------------------------------------
 
-################################
-# Seções de Log e Funções Básicas
-################################
+############################################################
+#               AUTO-INSTALADOR PORTAINER+TRAEFIK
+#               Estilo “passo a passo” colorido
+############################################################
 
-OK="[ \e[32mOK\e[0m ]"
-INFO="[ \e[34mINFO\e[0m ]"
-ERROR="[ \e[31mERRO\e[0m ]"
+# -------------- Cores / Estilos --------------
+RESET="\e[0m"
+GREEN="\e[32m"
+BLUE="\e[34m"
+WHITE="\e[97m"
+OK="[ ${GREEN}OK${RESET} ]"
+INFO="[ ${BLUE}INFO${RESET} ]"
+ERROR="[ \e[31mERRO${RESET} ]"
 
+# -------------- Funções de Log --------------
 function log_ok()    { echo -e "${OK} - $1"; }
 function log_info()  { echo -e "${INFO} - $1"; }
 function log_error() { echo -e "${ERROR} - $1"; }
 
-# Executa um comando silenciosamente,
-# se falhar, exibe ERRO e aborta (usado em etapas menores).
-function run_cmd() {
-  local cmd="$1"
-  local msg="$2"
-  log_info "$msg"
-  eval "$cmd" &> /dev/null
-  if [ $? -ne 0 ]; then
-    log_error "Falha ao executar: $cmd"
-    exit 1
-  fi
-  log_ok "$msg - concluído."
+# -------------- Banner Inicial --------------
+clear
+echo -e "${BLUE}=============================================================${RESET}"
+echo -e "${GREEN}                 INICIANDO INSTALAÇÃO ${WHITE}v2.6.3"
+echo -e "${BLUE}=============================================================${RESET}\n"
+sleep 1
+
+# Definimos o total de etapas para ir numerando
+TOTAL_STEPS=14
+STEP=1
+
+# -------------- Helpers para etapas --------------
+function print_step() {
+  local msg="$1"
+  echo -e "${STEP}/${TOTAL_STEPS} - ${OK} - ${msg}"
+  STEP=$((STEP+1))
 }
 
-# Função que remove stacks e sai do Swarm para recomeçar
-function cleanup_and_retry() {
-  echo "Removendo stacks e saindo do Swarm para recomeçar do zero..."
-  docker stack rm portainer &>/dev/null
-  docker stack rm traefik &>/dev/null
-  sleep 5
-  docker swarm leave --force &>/dev/null
-  docker system prune -af &>/dev/null
-  
-  # Apaga arquivos temporários
-  rm -f /tmp/stack-portainer.yml
-  rm -f /tmp/stack-traefik.yml
-  log_ok "Limpeza feita. Agora você pode executar o script novamente."
-  exit 0
-}
+#############################################
+# 1/14 - Atualizar Sistema
+#############################################
+print_step "Fazendo Upgrade do sistema (apt-get update && upgrade)"
+sudo apt-get update && sudo apt-get upgrade -y
+if [ $? -ne 0 ]; then
+  log_error "Falha ao atualizar o sistema."
+  exit 1
+fi
+log_ok "Sistema atualizado com sucesso."
+sleep 1
 
-###############################################
-# Função de atualização de pacotes em etapas
-###############################################
-function update_system_in_stages() {
-  local steps=15   # Quantidade de etapas para mostrar
-  local delay=3    # Intervalo em segundos entre etapas
-
-  log_info "Iniciando atualização de pacotes do sistema..."
-  echo "Exibiremos etapas de progresso para você acompanhar..."
-
-  # Inicia o processo em segundo plano, redirecionando saída para /dev/null
-  (sudo apt-get update -y && sudo apt-get upgrade -y) &> /dev/null &
-  CMD_PID=$!
-
-  local i=1
-  while kill -0 $CMD_PID 2>/dev/null; do
-    echo "[Etapa $i/$steps] Continuando a atualização..."
-    i=$((i+1))
-    
-    # Se atingirmos o número máximo de etapas, paramos de imprimir mais
-    if [ $i -gt $steps ]; then
-      echo "Ainda atualizando... (pode demorar um pouco mais.)"
-      break
-    fi
-
-    sleep $delay
-  done
-
-  # Espera o processo realmente terminar
-  wait $CMD_PID
-  RET=$?
-
-  if [ $RET -eq 0 ]; then
-    log_ok "Pacotes do sistema atualizados com sucesso!"
-  else
-    log_error "Ocorreu um erro durante a atualização de pacotes!"
-    exit 1
-  fi
-}
-
-############################
-# 1. Atualização do sistema
-############################
-update_system_in_stages
-
-################################
-# 2. Verificando/Instalando deps
-################################
-
-# sudo
+#############################################
+# 2/14 - Verificando/Instalando sudo
+#############################################
+print_step "Verificando/Instalando sudo"
 if ! dpkg -l | grep -q sudo; then
-  run_cmd "sudo apt-get install -y sudo" "Instalando sudo"
+  sudo apt-get install -y sudo
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar sudo."
+    exit 1
+  fi
 fi
+log_ok "sudo OK."
+sleep 1
 
-# apt-utils
+#############################################
+# 3/14 - Verificando/Instalando apt-utils
+#############################################
+print_step "Verificando/Instalando apt-utils"
 if ! dpkg -l | grep -q apt-utils; then
-  run_cmd "sudo apt-get install -y apt-utils" "Instalando apt-utils"
+  sudo apt-get install -y apt-utils
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar apt-utils."
+    exit 1
+  fi
 fi
+log_ok "apt-utils OK."
+sleep 1
 
-# python3
+#############################################
+# 4/14 - Verificando/Instalando python3
+#############################################
+print_step "Verificando/Instalando python3"
 if ! command -v python3 &>/dev/null; then
-  run_cmd "sudo apt-get install -y python3" "Instalando python3"
+  sudo apt-get install -y python3
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar python3."
+    exit 1
+  fi
 fi
+log_ok "python3 OK."
+sleep 1
 
-# git
+#############################################
+# 5/14 - Verificando/Instalando git
+#############################################
+print_step "Verificando/Instalando git"
 if ! command -v git &>/dev/null; then
-  run_cmd "sudo apt-get install -y git" "Instalando git"
+  sudo apt-get install -y git
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar git."
+    exit 1
+  fi
 fi
+log_ok "git OK."
+sleep 1
 
-# docker
+#############################################
+# 6/14 - Verificando/Instalando Docker
+#############################################
+print_step "Verificando/Instalando Docker"
 if ! command -v docker &>/dev/null; then
-  log_info "Instalando Docker..."
-  curl -fsSL https://get.docker.com -o get-docker.sh &>/dev/null
-  sh get-docker.sh &>/dev/null
+  curl -fsSL https://get.docker.com -o get-docker.sh
+  sh get-docker.sh
   if ! command -v docker &>/dev/null; then
     log_error "Falha ao instalar Docker!"
     exit 1
   fi
-  log_ok "Docker instalado."
-else
-  log_ok "Docker já instalado."
 fi
+log_ok "Docker OK."
+sleep 1
 
-###################################################
-# 3. Inicializa Swarm se não estiver ativo
-###################################################
+#############################################
+# 7/14 - Inicializando Docker Swarm
+#############################################
+print_step "Inicializando Docker Swarm (se não estiver ativo)"
 SWARM_ACTIVE=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
 if [ "$SWARM_ACTIVE" != "active" ]; then
-  log_info "Docker Swarm não está ativo. Tentando iniciar..."
-
-  # Tenta detectar o primeiro IPv4 local
+  log_info "Swarm não ativo. Tentando iniciar..."
   DETECTED_IP=$(hostname -I | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
-
   if [ -z "$DETECTED_IP" ]; then
-    log_info "Não foi possível detectar IP automaticamente. Iniciando Swarm sem --advertise-addr..."
-    docker swarm init &>/dev/null || true
+    echo "Não foi possível detectar IP automaticamente."
+    docker swarm init || true
   else
     echo "Detectamos o IP: $DETECTED_IP"
-    read -p "Este IP é o seu IPv4 público? (s/n): " CONF_IP
-    if [[ "$CONF_IP" == "s" || "$CONF_IP" == "S" ]]; then
-      docker swarm init --advertise-addr "$DETECTED_IP" &>/dev/null || true
+    read -p "Este é o IP público? (s/n): " CONF_IP
+    if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
+      docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
       read -p "Informe o IP público IPv4 correto: " USER_IP
-      docker swarm init --advertise-addr "$USER_IP" &>/dev/null || true
+      docker swarm init --advertise-addr "$USER_IP" || true
     fi
   fi
 
+  # Verifica se o Swarm ficou ativo
   SWARM_ACTIVE_AGAIN=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
   if [ "$SWARM_ACTIVE_AGAIN" != "active" ]; then
-    log_error "Falha ao inicializar o Swarm. Verifique se há múltiplos IPs na mesma interface."
+    log_error "Falha ao iniciar o Swarm. Verifique IP e tente novamente."
     exit 1
   else
     log_ok "Swarm inicializado com sucesso."
@@ -165,46 +153,54 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
 else
   log_ok "Swarm já está ativo."
 fi
+sleep 1
 
-###################################################
-# 4. Coleta de dados do usuário (com confirmação)
-###################################################
+#############################################
+# 8/14 - Coletando dados do usuário
+#############################################
+print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
+
 while true; do
-  echo -e "\n========================================="
-  echo "Por favor, informe os dados para configuração:"
+  echo -e "\n--------------------------------------"
   read -p "Nome da rede interna (overlay): " NETWORK_NAME
   read -p "Nome do servidor (descrição/hostname): " SERVER_NAME
   read -p "E-mail para Let's Encrypt (Traefik): " EMAIL_LETSENCRYPT
-  read -p "Domínio para Portainer (ex.: portainer.seudominio.com): " PORTAINER_DOMAIN
+  read -p "Domínio para Portainer (ex.: portainer.meudominio.com): " PORTAINER_DOMAIN
 
   echo -e "\nVocê informou:"
   echo " - Rede interna: $NETWORK_NAME"
   echo " - Nome do servidor: $SERVER_NAME"
-  echo " - E-mail Let's Encrypt: $EMAIL_LETSENCRYPT"
+  echo " - E-mail: $EMAIL_LETSENCRYPT"
   echo " - Domínio Portainer: https://$PORTAINER_DOMAIN"
-
+  
   read -p "Está tudo correto? (s/n): " CONF_ALL
-  if [[ "$CONF_ALL" == "s" || "$CONF_ALL" == "S" ]]; then
+  if [[ "$CONF_ALL" =~ ^[Ss]$ ]]; then
     break
   fi
-  echo "Ok, vamos refazer as perguntas..."
+  echo "Ok, vamos refazer..."
 done
+sleep 1
 
-###################################################
-# 5. Criação de volumes e rede
-###################################################
-run_cmd "docker volume create portainer_data" "Criando volume portainer_data (se não existir)"
-run_cmd "docker volume create volume_swarm_shared" "Criando volume volume_swarm_shared (se não existir)"
-run_cmd "docker volume create volume_swarm_certificates" "Criando volume volume_swarm_certificates (se não existir)"
+#############################################
+# 9/14 - Criando volumes
+#############################################
+print_step "Criando volumes (portainer_data, volume_swarm_shared, volume_swarm_certificates)"
+docker volume create portainer_data
+docker volume create volume_swarm_shared
+docker volume create volume_swarm_certificates
+sleep 1
 
-log_info "Criando rede overlay '$NETWORK_NAME' (se não existir)..."
-docker network create --driver overlay --attachable "$NETWORK_NAME" &>/dev/null || true
-log_ok "Rede '$NETWORK_NAME' verificada/criada."
+#############################################
+# 10/14 - Criando rede overlay
+#############################################
+print_step "Criando rede overlay '$NETWORK_NAME'"
+docker network create --driver overlay --attachable "$NETWORK_NAME" || true
+sleep 1
 
-###################################################
-# 6. Gera docker-compose do Portainer
-###################################################
-log_info "Gerando stack do Portainer em /tmp/stack-portainer.yml..."
+#############################################
+# 11/14 - Gerando stack do Portainer
+#############################################
+print_step "Gerando arquivo /tmp/stack-portainer.yml"
 cat > /tmp/stack-portainer.yml <<EOF
 version: "3.7"
 
@@ -256,12 +252,13 @@ volumes:
     external: true
     name: portainer_data
 EOF
-log_ok "Stack Portainer gerada."
+log_ok "Stack Portainer criado em /tmp/stack-portainer.yml"
+sleep 1
 
-###################################################
-# 7. Gera docker-compose do Traefik
-###################################################
-log_info "Gerando stack do Traefik em /tmp/stack-traefik.yml..."
+#############################################
+# 12/14 - Gerando stack do Traefik
+#############################################
+print_step "Gerando arquivo /tmp/stack-traefik.yml"
 cat > /tmp/stack-traefik.yml <<EOF
 version: "3.7"
 
@@ -335,45 +332,40 @@ networks:
     external: true
     name: ${NETWORK_NAME}
 EOF
-log_ok "Stack Traefik gerada."
+log_ok "Stack Traefik criado em /tmp/stack-traefik.yml"
+sleep 1
 
-########################################
-# 8. Faz deploy de Portainer e Traefik
-########################################
-log_info "Fazendo deploy do stack Portainer..."
-docker stack deploy -c /tmp/stack-portainer.yml portainer &>/dev/null
+#############################################
+# 13/14 - Fazendo deploy do Portainer
+#############################################
+print_step "Deploy do Portainer (docker stack deploy)"
+docker stack deploy -c /tmp/stack-portainer.yml portainer
+sleep 2
 
-log_info "Fazendo deploy do stack Traefik..."
-docker stack deploy -c /tmp/stack-traefik.yml traefik &>/dev/null
-
+#############################################
+# 14/14 - Fazendo deploy do Traefik
+#############################################
+print_step "Deploy do Traefik (docker stack deploy)"
+docker stack deploy -c /tmp/stack-traefik.yml traefik
 sleep 5
-log_ok "Deploy enviado ao Docker Swarm. Verificando status..."
 
-########################################
-# 9. Verifica se os serviços subiram
-########################################
+echo -e "\n${OK} - Deploy enviado. Verificando status..."
+
+# Verifica se temos pelo menos 1 container "Running" em cada stack
 sleep 5
 P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 
 if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
-  echo "------------------------------------------------------------"
-  log_ok "Instalação Concluída com Sucesso!"
+  echo -e "${GREEN}Instalação concluída com sucesso!${RESET}"
   echo -e "${INFO} - Rede interna: $NETWORK_NAME"
   echo -e "${INFO} - Nome do Servidor: $SERVER_NAME"
   echo -e "${INFO} - E-mail Let's Encrypt: $EMAIL_LETSENCRYPT"
   echo -e "${INFO} - Domínio do Portainer: https://${PORTAINER_DOMAIN}"
-  echo "------------------------------------------------------------"
-  echo "Para verificar detalhes: docker stack ps portainer e docker stack ps traefik"
-  echo "------------------------------------------------------------"
+  echo -e "${BLUE}Para verificar detalhes:\n  docker stack ps portainer\n  docker stack ps traefik${RESET}"
 else
-  log_error "Parece que um ou mais serviços não estão em Running."
-  echo "Quer tentar remover tudo e rodar a instalação novamente?"
-  read -p "(s/n): " RETRY
-  if [[ "$RETRY" == "s" || "$RETRY" == "S" ]]; then
-    cleanup_and_retry
-  else
-    echo "Encerrando sem refazer a instalação."
-    exit 1
-  fi
+  log_error "Um ou mais serviços não estão em Running."
+  echo "Verifique com: docker stack ps portainer / traefik"
+  echo "Corrija o problema e tente novamente."
+  exit 1
 fi
