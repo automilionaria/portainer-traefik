@@ -1,10 +1,10 @@
 #!/bin/bash
 # ---------------------------------------------------------------------
 # Auto-instalador de Portainer + Traefik (Swarm)
+#  - Exibe progresso em "etapas" ao atualizar pacotes
+#  - Pede confirmação de IP e dados de rede
+#  - Possibilidade de refazer do zero se algo falhar
 # ---------------------------------------------------------------------
-#  - Oculta grande parte dos outputs (para ficar mais limpo).
-#  - Pede confirmação do IP detectado e dos dados de configuração.
-#  - Mostra status final e, se falhar, permite refazer o processo.
 
 ################################
 # Seções de Log e Funções Básicas
@@ -14,18 +14,12 @@ OK="[ \e[32mOK\e[0m ]"
 INFO="[ \e[34mINFO\e[0m ]"
 ERROR="[ \e[31mERRO\e[0m ]"
 
-function log_info() {
-  echo -e "${INFO} - $1"
-}
-function log_ok() {
-  echo -e "${OK} - $1"
-}
-function log_error() {
-  echo -e "${ERROR} - $1"
-}
+function log_ok()    { echo -e "${OK} - $1"; }
+function log_info()  { echo -e "${INFO} - $1"; }
+function log_error() { echo -e "${ERROR} - $1"; }
 
-# Executa comando silenciosamente,
-# se falhar, exibe ERRO e aborta.
+# Executa um comando silenciosamente,
+# se falhar, exibe ERRO e aborta (usado em etapas menores).
 function run_cmd() {
   local cmd="$1"
   local msg="$2"
@@ -38,7 +32,7 @@ function run_cmd() {
   log_ok "$msg - concluído."
 }
 
-# Função para remover stacks, sair do Swarm etc. (caso algo dê errado e o usuário queira recomeçar)
+# Função que remove stacks e sai do Swarm para recomeçar
 function cleanup_and_retry() {
   echo "Removendo stacks e saindo do Swarm para recomeçar do zero..."
   docker stack rm portainer &>/dev/null
@@ -54,14 +48,54 @@ function cleanup_and_retry() {
   exit 0
 }
 
+###############################################
+# Função de atualização de pacotes em etapas
+###############################################
+function update_system_in_stages() {
+  local steps=15   # Quantidade de etapas para mostrar
+  local delay=3    # Intervalo em segundos entre etapas
+
+  log_info "Iniciando atualização de pacotes do sistema..."
+  echo "Exibiremos etapas de progresso para você acompanhar..."
+
+  # Inicia o processo em segundo plano, redirecionando saída para /dev/null
+  (sudo apt-get update -y && sudo apt-get upgrade -y) &> /dev/null &
+  CMD_PID=$!
+
+  local i=1
+  while kill -0 $CMD_PID 2>/dev/null; do
+    echo "[Etapa $i/$steps] Continuando a atualização..."
+    i=$((i+1))
+    
+    # Se atingirmos o número máximo de etapas, paramos de imprimir mais
+    if [ $i -gt $steps ]; then
+      echo "Ainda atualizando... (pode demorar um pouco mais.)"
+      break
+    fi
+
+    sleep $delay
+  done
+
+  # Espera o processo realmente terminar
+  wait $CMD_PID
+  RET=$?
+
+  if [ $RET -eq 0 ]; then
+    log_ok "Pacotes do sistema atualizados com sucesso!"
+  else
+    log_error "Ocorreu um erro durante a atualização de pacotes!"
+    exit 1
+  fi
+}
+
 ############################
 # 1. Atualização do sistema
 ############################
-run_cmd "sudo apt-get update -y && sudo apt-get upgrade -y" "Atualizando pacotes do sistema"
+update_system_in_stages
 
-##################################
+################################
 # 2. Verificando/Instalando deps
-##################################
+################################
 
 # sudo
 if ! dpkg -l | grep -q sudo; then
@@ -108,11 +142,9 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
   DETECTED_IP=$(hostname -I | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
 
   if [ -z "$DETECTED_IP" ]; then
-    # Se não conseguiu detectar, inicia sem param
     log_info "Não foi possível detectar IP automaticamente. Iniciando Swarm sem --advertise-addr..."
     docker swarm init &>/dev/null || true
   else
-    # Pergunta se o IP é o correto
     echo "Detectamos o IP: $DETECTED_IP"
     read -p "Este IP é o seu IPv4 público? (s/n): " CONF_IP
     if [[ "$CONF_IP" == "s" || "$CONF_IP" == "S" ]]; then
@@ -320,7 +352,6 @@ log_ok "Deploy enviado ao Docker Swarm. Verificando status..."
 ########################################
 # 9. Verifica se os serviços subiram
 ########################################
-# Aguardar alguns segundos e checar se ambos têm tarefas rodando
 sleep 5
 P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
