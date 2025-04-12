@@ -137,10 +137,27 @@ sleep 1
 print_step "Verificando/Instalando Docker"
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com -o get-docker.sh
+
+  # Tenta instalar Docker e verifica conflitos de travas
   sh get-docker.sh
   if ! command -v docker &>/dev/null; then
-    log_error "Falha ao instalar Docker!"
-    exit 1
+    echo
+    echo -e "${ERROR} - Falha ao instalar Docker. Tentando liberar possíveis travas do apt..."
+    echo
+
+    # Modo de recuperação
+    sudo killall apt apt-get dpkg 2>/dev/null
+    sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock
+    sudo dpkg --configure -a
+    sleep 2
+    echo -e "${INFO} - Tentando novamente instalar Docker..."
+
+    # Tenta novamente
+    sh get-docker.sh
+    if ! command -v docker &>/dev/null; then
+      log_error "Instalação do Docker falhou novamente após tentar recuperar o sistema."
+      exit 1
+    fi
   fi
 fi
 log_ok "Docker OK."
