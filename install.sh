@@ -1,3 +1,5 @@
+au tinstalador portainer traeifk:
+
 #!/bin/bash
 
 ############################################################
@@ -10,11 +12,9 @@ RESET="\e[0m"
 GREEN="\e[32m"
 BLUE="\e[34m"
 WHITE="\e[97m"
-YELLOW="\e[33m"
-RED="\e[31m"
 OK="[ ${GREEN}OK${RESET} ]"
 INFO="[ ${BLUE}INFO${RESET} ]"
-ERROR="[ ${RED}ERRO${RESET} ]"
+ERROR="[ \e[31mERRO${RESET} ]"
 
 # -------------- Funções de Log --------------
 function log_ok()    { echo -e "${OK} - $1"; }
@@ -48,15 +48,15 @@ echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓�
 echo -e "${WHITE}    ______ ______ ______ ______ ______ ______ ______ ______ ______ ______     ${RESET}"
 echo -e "${WHITE}   |      \      \      \      \      \      \      \      \      \      \    ${RESET}"
 echo -e "${WHITE}    \▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓    ${RESET}"
-echo -e "${WHITE}                                                                              ${RESET}\n"
-
+echo -e "${WHITE}                                                                              ${RESET}\n"    
+                                                                                                                                                                                                                                                                                                                                                                                                                              
 sleep 1
 
 # Definimos o total de etapas para ir numerando
 TOTAL_STEPS=14
 STEP=1
 
-# -------------- Helper para etapas --------------
+# -------------- Helpers para etapas --------------
 function print_step() {
   local msg="$1"
   echo -e "${STEP}/${TOTAL_STEPS} - ${OK} - ${msg}"
@@ -137,18 +137,22 @@ sleep 1
 print_step "Verificando/Instalando Docker"
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com -o get-docker.sh
+
   # Tenta instalar Docker e verifica conflitos de travas
   sh get-docker.sh
   if ! command -v docker &>/dev/null; then
     echo
     echo -e "${ERROR} - Falha ao instalar Docker. Tentando liberar possíveis travas do apt..."
     echo
+
     # Modo de recuperação
     sudo killall apt apt-get dpkg 2>/dev/null
     sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock
     sudo dpkg --configure -a
     sleep 2
     echo -e "${INFO} - Tentando novamente instalar Docker..."
+
+    # Tenta novamente
     sh get-docker.sh
     if ! command -v docker &>/dev/null; then
       log_error "Instalação do Docker falhou novamente após tentar recuperar o sistema."
@@ -166,16 +170,17 @@ print_step "Inicializando Docker Swarm (se não estiver ativo)"
 SWARM_ACTIVE=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
 if [ "$SWARM_ACTIVE" != "active" ]; then
   log_info "Swarm não ativo. Tentando iniciar..."
-  DETECTED_IP=$(hostname -I | grep -Eo '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1)
+  DETECTED_IP=$(hostname -I | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
   if [ -z "$DETECTED_IP" ]; then
     echo "Não foi possível detectar IP automaticamente."
     docker swarm init || true
   else
     echo
-    echo -e "========================================"
-    echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
-    echo -e "========================================\n"
-    read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
+echo -e "========================================"
+echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+echo -e "========================================\n"
+
+read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -183,6 +188,7 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
       docker swarm init --advertise-addr "$USER_IP" || true
     fi
   fi
+
   # Verifica se o Swarm ficou ativo
   SWARM_ACTIVE_AGAIN=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
   if [ "$SWARM_ACTIVE_AGAIN" != "active" ]; then
@@ -200,6 +206,7 @@ sleep 1
 # 8/14 - Coletando dados do usuário
 #############################################
 print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
+
 while true; do
   echo
   echo "--------------------------------------"
@@ -207,15 +214,19 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
+  ...
+
+  # Mensagem centralizada, entre barras
   echo
   echo "========================================"
   echo -e "             Você informou:"
   echo -e "               - Rede interna: \e[32m$NETWORK_NAME\e[0m"
   echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
   echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
-  echo -e "               - Domínio Portainer: \e[32mhttps://${PORTAINER_DOMAIN}\e[0m"
+  echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
   echo "========================================"
   echo
+
   read -p "Está tudo correto? (s/n): " CONF_ALL
   if [[ "$CONF_ALL" =~ ^[Ss]$ ]]; then
     break
@@ -314,36 +325,42 @@ services:
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=${NETWORK_NAME}"
+
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.transport.respondingTimeouts.idleTimeout=3600"
+
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencryptresolver.acme.email=${EMAIL_LETSENCRYPT}"
+
       - "--log.level=DEBUG"
       - "--log.format=common"
       - "--log.filePath=/var/log/traefik/traefik.log"
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access-log"
+
     deploy:
       placement:
         constraints:
           - node.role == manager
       labels:
         - traefik.enable=true
-        - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
-        - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
-        - "traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)"
+        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
+        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
+        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
         - traefik.http.routers.http-catchall.entrypoints=web
         - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
         - traefik.http.routers.http-catchall.priority=1
+
     volumes:
       - volume_swarm_certificates:/etc/traefik/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
+
     ports:
       - target: 80
         published: 80
@@ -351,15 +368,19 @@ services:
       - target: 443
         published: 443
         mode: host
+
     networks:
       - ${NETWORK_NAME}
+
 volumes:
   volume_swarm_shared:
     external: true
     name: volume_swarm_shared
+
   volume_swarm_certificates:
     external: true
     name: volume_swarm_certificates
+
 networks:
   ${NETWORK_NAME}:
     external: true
@@ -383,8 +404,9 @@ docker stack deploy -c /tmp/stack-traefik.yml traefik
 sleep 5
 
 echo -e "\n${OK} - Deploy enviado. Verificando status..."
-sleep 5
 
+# Verifica se temos pelo menos 1 container "Running" em cada stack
+sleep 5
 P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 
@@ -402,6 +424,8 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo -e "       docker stack ps traefik"
   echo "========================================"
   echo
+
+  # Mensagem de destaque sobre prazo de login
   echo -e "       \e[31mATENÇÃO:\e[0m Você tem \e[31mAPENAS 5 minutos\e[0m para fazer seu primeiro login no Portainer."
   echo -e "       Caso ultrapasse esse tempo, será necessário \e[31mrefazer toda a instalação.\e[0m"
   echo
