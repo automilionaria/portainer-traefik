@@ -48,7 +48,11 @@ echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓�
 echo -e "${WHITE}    ______ ______ ______ ______ ______ ______ ______ ______ ______ ______     ${RESET}"
 echo -e "${WHITE}   |      \      \      \      \      \      \      \      \      \      \    ${RESET}"
 echo -e "${WHITE}    \▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓    ${RESET}"
-echo -e "${WHITE}                                                                              ${RESET}\n"    
+echo -e "${GREEN}                                                                              ${RESET}"
+echo -e "${YELLOW}                               Auto Instalador                               ${RESET}"
+echo -e "${YELLOW}           Minha Automação MilionárIA: https://automilionaria.trade          ${RESET}"
+echo
+   
                                                                                                                                                                                                                                                                                                                                                                                                                               
 sleep 1
 
@@ -422,6 +426,8 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo -e "       ${BLUE}Para verificar detalhes:${RESET}"
   echo -e "       docker stack ps portainer"
   echo -e "       docker stack ps traefik"
+  echo
+  echo -e "       ${INFO} - Minha Automação MilionárIA: \e[33mhttps://automilionaria.trade\e[0m"   
   echo "========================================"
   echo
 
