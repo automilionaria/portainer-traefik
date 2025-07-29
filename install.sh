@@ -324,25 +324,37 @@ services:
   traefik:
     image: traefik:v2.11.2
     command:
+      # Descoberta via Docker/Swarm
       - "--api.dashboard=true"
       - "--providers.docker.swarmMode=true"
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=${NETWORK_NAME}"
 
+      # Entrypoints HTTP/HTTPS
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
       - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.transport.respondingTimeouts.idleTimeout=3600"
 
+      # **Preservar IP real do cliente** para o backend (Chatwoot/Rails ver o X-Forwarded-For correto)
+      - "--entrypoints.web.forwardedHeaders.insecure=true"
+      - "--entrypoints.websecure.forwardedHeaders.insecure=true"
+
+      # Timeouts para upstreams (evita travas em uploads/long polls)
+      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=90s"
+
+      # Let's Encrypt
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencryptresolver.acme.email=${EMAIL_LETSENCRYPT}"
 
-      - "--log.level=DEBUG"
+      # Logs
+      - "--log.level=INFO"
       - "--log.format=common"
       - "--log.filePath=/var/log/traefik/traefik.log"
       - "--accesslog=true"
@@ -354,12 +366,41 @@ services:
           - node.role == manager
       labels:
         - traefik.enable=true
+
+        # Redirecionar HTTP->HTTPS catch‑all
         - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
         - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
         - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
         - traefik.http.routers.http-catchall.entrypoints=web
         - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
         - traefik.http.routers.http-catchall.priority=1
+
+        ###################################################################
+        # Middlewares globais definidos no Traefik (reutilizáveis)
+        ###################################################################
+
+        # Compressão (gzip) — reduz payload nos widgets
+        - traefik.http.middlewares.compress.compress=true
+
+        # Buffering — permite uploads maiores (ex.: imagens, PDFs)
+        - traefik.http.middlewares.buffering.buffering.maxRequestBodyBytes=20000000
+        - traefik.http.middlewares.buffering.buffering.maxResponseBodyBytes=20000000
+        - traefik.http.middlewares.buffering.buffering.memRequestBodyBytes=2097152
+        - traefik.http.middlewares.buffering.buffering.retryExpression=IsNetworkError() && Attempts() <= 2
+
+        # Rate limit "alto e seguro" na borda (protege Chatwoot sem bloquear usuário normal)
+        # 120 requisições por minuto por IP, com burst 240.
+        - traefik.http.middlewares.ratelimit-public.ratelimit.period=1m
+        - traefik.http.middlewares.ratelimit-public.ratelimit.average=120
+        - traefik.http.middlewares.ratelimit-public.ratelimit.burst=240
+
+        # Security headers básicos (sem quebrar widget)
+        - traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer-when-downgrade
+        - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
+        - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
+        - traefik.http.middlewares.secure-headers.headers.stsPreload=true
+        - traefik.http.middlewares.secure-headers.headers.browserXssFilter=true
+        - traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true
 
     volumes:
       - volume_swarm_certificates:/etc/traefik/letsencrypt
