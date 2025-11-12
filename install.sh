@@ -111,6 +111,8 @@ version: "3.8"
 services:
   traefik:
     image: traefik:v2.11.2
+    environment:
+      - DOCKER_API_VERSION=1.52
     command:
       - "--api.dashboard=true"
       - "--providers.docker.swarmMode=true"
@@ -133,24 +135,9 @@ services:
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
       - "--log.level=INFO"
       - "--accesslog=true"
-    deploy:
-      placement:
-        constraints: [ "node.role == manager" ]
-      restart_policy:
-        condition: any
-        delay: 5s
-        max_attempts: 5
-        window: 2m
-      labels:
-        - traefik.enable=true
-        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
-        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
-        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
-        - traefik.http.routers.http-catchall.entrypoints=web
-        - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - volume_swarm_certificates:/etc/traefik/letsencrypt
+      - volume_swarm_certificates:/etc/traefik/letsencrypt"
     ports:
       - target: 80
         published: 80
