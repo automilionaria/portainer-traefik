@@ -85,6 +85,7 @@ echo -e "${GREEN}                           '-----------------------'           
 echo -e "${YELLOW}                               Auto Instalador                               ${RESET}"
 echo -e "${YELLOW}           Minha Automação MilionárIA: https://automilionaria.trade          ${RESET}"
 echo
+
 sleep 1
 
 # Definimos o total de etapas para ir numerando
@@ -211,11 +212,11 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
     docker swarm init || true
   else
     echo
-    echo -e "========================================"
-    echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
-    echo -e "========================================\n"
+echo -e "========================================"
+echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+echo -e "========================================\n"
 
-    read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
+read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -249,13 +250,17 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
-  read -p $'\e[33mCloudflare API Token (DNS Edit da zona; ENTER para pular e usar HTTP-01): \e[0m' CF_DNS_API_TOKEN
-  # ...
 
-  # --- Sanitização do domínio (remove http/https e barras finais) ---
-  PORTAINER_DOMAIN=${PORTAINER_DOMAIN#http://}
-  PORTAINER_DOMAIN=${PORTAINER_DOMAIN#https://}
-  PORTAINER_DOMAIN=${PORTAINER_DOMAIN%/}
+  # NOVO: detecção Cloudflare + token (se usar DNS-01)
+  read -p $'\e[33mSeu domínio está atrás do Cloudflare com \e[1mnuvem laranja (proxy)\e[0m habilitada? (s/n): \e[0m' USE_CLOUDFLARE
+  CF_TOKEN=""
+  if [[ "$USE_CLOUDFLARE" =~ ^[Ss]$ ]]; then
+    echo -e "${INFO} - Usaremos \e[1mDNS-01 (Cloudflare)\e[0m para emitir o certificado."
+    echo -e "${INFO} - Crie um \e[1mAPI Token do Cloudflare\e[0m com permissão 'Zone.DNS:Edit' (escopo mínimo) e cole abaixo."
+    read -p $'\e[33mCloudflare API Token (ex.: \e[0m' CF_TOKEN
+  else
+    echo -e "${INFO} - Usaremos \e[1mHTTP-01\e[0m. Certifique-se de que a porta 80 do seu \e[1mIP público\e[0m esteja acessível \e[1mdiretamente\e[0m (sem proxy)."
+  fi
 
   # Mensagem centralizada, entre barras
   echo
@@ -265,10 +270,10 @@ while true; do
   echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
   echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
   echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
-  if [ -n "$CF_DNS_API_TOKEN" ]; then
-    echo -e "               - Modo ACME: \e[32mDNS-01 (Cloudflare)\e[0m"
+  if [[ "$USE_CLOUDFLARE" =~ ^[Ss]$ ]]; then
+    echo -e "               - Desafio ACME: \e[32mDNS-01 (Cloudflare)\e[0m"
   else
-    echo -e "               - Modo ACME: \e[33mHTTP-01 (porta 80 aberta, proxy desligado)\e[0m"
+    echo -e "               - Desafio ACME: \e[32mHTTP-01 (porta 80)\e[0m"
   fi
   echo "========================================"
   echo
@@ -295,6 +300,16 @@ sleep 1
 #############################################
 print_step "Criando rede overlay '$NETWORK_NAME'"
 docker network create --driver overlay --attachable "$NETWORK_NAME" || true
+sleep 1
+
+# NOVO: verificação de portas 80/443 (evita falhas de bind)
+print_step "Verificando se as portas 80/443 estão livres (necessário para Traefik)"
+if ss -ltn '( sport = :80 or sport = :443 )' | grep -E 'LISTEN' >/dev/null 2>&1; then
+  log_error "Porta 80 e/ou 443 já está em uso. Pare o serviço que ocupa essas portas e rode de novo."
+  ss -ltnp '( sport = :80 or sport = :443 )' || true
+  exit 1
+fi
+log_ok "Portas 80/443 livres."
 sleep 1
 
 #############################################
@@ -333,15 +348,14 @@ services:
         constraints:
           - node.role == manager
       labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)"
-        - "traefik.http.routers.portainer.entrypoints=websecure"
-        - "traefik.http.routers.portainer.tls=true"
-        - "traefik.http.routers.portainer.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.portainer.loadbalancer.server.port=9000"
-        - "traefik.http.routers.portainer.service=portainer"
-        - "traefik.docker.network=${NETWORK_NAME}"
-        - "traefik.http.routers.portainer.priority=1"
+        - traefik.enable=true
+        - traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
+        - traefik.http.services.portainer.loadbalancer.server.port=9000
+        - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.portainer.service=portainer
+        - traefik.docker.network=${NETWORK_NAME}
+        - traefik.http.routers.portainer.entrypoints=websecure
+        - traefik.http.routers.portainer.priority=1
 
 networks:
   ${NETWORK_NAME}:
@@ -361,33 +375,24 @@ sleep 1
 #############################################
 print_step "Gerando arquivo /tmp/stack-traefik.yml"
 
-# --- Garante acme.json no volume com permissão correta ---
-CERT_PATH="/var/lib/docker/volumes/volume_swarm_certificates/_data"
-sudo mkdir -p "$CERT_PATH"
-sudo touch "$CERT_PATH/acme.json"
-sudo chmod 600 "$CERT_PATH/acme.json"
-
-# --- Bloco ACME dinâmico (HTTP-01 x DNS-01 Cloudflare) ---
-if [ -n "$CF_DNS_API_TOKEN" ]; then
-  ACME_BLOCK=$(cat <<'ACME'
-      # Let's Encrypt (ACME DNS-01 via Cloudflare)
+# Bloco dinâmico para ACME (HTTP-01 vs DNS-01/Cloudflare)
+if [[ "$USE_CLOUDFLARE" =~ ^[Ss]$ ]]; then
+  ACME_LINES=$(cat <<'ACME_EOF'
+      # Let's Encrypt via DNS-01 (Cloudflare)
       - "--certificatesresolvers.letsencryptresolver.acme.dnschallenge=true"
       - "--certificatesresolvers.letsencryptresolver.acme.dnschallenge.provider=cloudflare"
-ACME
+      - "--certificatesresolvers.letsencryptresolver.acme.dnschallenge.delaybeforecheck=30"
+ACME_EOF
 )
-  ENV_BLOCK=$(cat <<ENVVARS
-    environment:
-      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
-ENVVARS
-)
+  ENV_CF="- CF_DNS_API_TOKEN=${CF_TOKEN}"
 else
-  ACME_BLOCK=$(cat <<'ACME'
-      # Let's Encrypt (ACME HTTP-01)
+  ACME_LINES=$(cat <<'ACME_EOF'
+      # Let's Encrypt via HTTP-01 (porta 80 precisa estar aberta diretamente)
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
-ACME
+ACME_EOF
 )
-  ENV_BLOCK=""
+  ENV_CF=""
 fi
 
 cat > /tmp/stack-traefik.yml <<EOF
@@ -395,7 +400,7 @@ version: "3.7"
 
 services:
   traefik:
-    image: traefik:v2.11.30
+    image: traefik:v2.11.2
     command:
       # Descoberta via Docker/Swarm
       - "--api.dashboard=true"
@@ -411,63 +416,75 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
       - "--entrypoints.websecure.address=:443"
 
-      # Preservar IP real do cliente
+      # **Preservar IP real do cliente**
       - "--entrypoints.web.forwardedHeaders.insecure=true"
       - "--entrypoints.websecure.forwardedHeaders.insecure=true"
 
-      # Timeouts upstream
+      # Timeouts
       - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
       - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
       - "--serversTransport.forwardingTimeouts.idleConnTimeout=90s"
 
-${ACME_BLOCK}
+      # Let's Encrypt (comum)
       - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencryptresolver.acme.email=${EMAIL_LETSENCRYPT}"
+${ACME_LINES}
 
-      # Logs (stdout)
+      # Logs
       - "--log.level=INFO"
+      - "--log.format=common"
+      - "--log.filePath=/var/log/traefik/traefik.log"
       - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access-log"
 
-${ENV_BLOCK}
     deploy:
       placement:
         constraints:
           - node.role == manager
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 120s
       labels:
-        - "traefik.enable=true"
+        - traefik.enable=true
 
         # Redirecionar HTTP->HTTPS catch-all
-        - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
-        - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
-        - "traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)"
-        - "traefik.http.routers.http-catchall.entrypoints=web"
-        - "traefik.http.routers.http-catchall.middlewares=redirect-https@docker"
-        - "traefik.http.routers.http-catchall.priority=1"
+        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
+        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
+        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
+        - traefik.http.routers.http-catchall.entrypoints=web
+        - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
+        - traefik.http.routers.http-catchall.priority=1
 
         ###################################################################
-        # Middlewares globais definidos no Traefik (reutilizáveis)
+        # Middlewares globais (reutilizáveis)
         ###################################################################
-        - "traefik.http.middlewares.compress.compress=true"
 
-        # Buffering — permite uploads maiores (ex.: imagens, PDFs)
-        - "traefik.http.middlewares.buffering.buffering.maxRequestBodyBytes=20000000"
-        - "traefik.http.middlewares.buffering.buffering.maxResponseBodyBytes=20000000"
-        - "traefik.http.middlewares.buffering.buffering.memRequestBodyBytes=2097152"
-        - "traefik.http.middlewares.buffering.buffering.retryExpression=IsNetworkError() && Attempts() <= 2"
+        # Compressão (gzip)
+        - traefik.http.middlewares.compress.compress=true
 
-        # Rate limit "alto e seguro" na borda
-        - "traefik.http.middlewares.ratelimit-public.ratelimit.period=1m"
-        - "traefik.http.middlewares.ratelimit-public.ratelimit.average=120"
-        - "traefik.http.middlewares.ratelimit-public.ratelimit.burst=240"
+        # Buffering — uploads maiores
+        - traefik.http.middlewares.buffering.buffering.maxRequestBodyBytes=20000000
+        - traefik.http.middlewares.buffering.buffering.maxResponseBodyBytes=20000000
+        - traefik.http.middlewares.buffering.buffering.memRequestBodyBytes=2097152
+        - traefik.http.middlewares.buffering.buffering.retryExpression=IsNetworkError() && Attempts() <= 2
 
-        # Security headers básicos (sem quebrar widget)
-        - "traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer-when-downgrade"
-        - "traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000"
-        - "traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true"
-        - "traefik.http.middlewares.secure-headers.headers.stsPreload=true"
-        - "traefik.http.middlewares.secure-headers.headers.browserXssFilter=true"
-        - "traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true"
+        # Rate limit
+        - traefik.http.middlewares.ratelimit-public.ratelimit.period=1m
+        - traefik.http.middlewares.ratelimit-public.ratelimit.average=120
+        - traefik.http.middlewares.ratelimit-public.ratelimit.burst=240
 
+        # Security headers básicos
+        - traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer-when-downgrade
+        - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
+        - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
+        - traefik.http.middlewares.secure-headers.headers.stsPreload=true
+        - traefik.http.middlewares.secure-headers.headers.browserXssFilter=true
+        - traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true
+
+    environment:
+${ENV_CF:+      ${ENV_CF}}
     volumes:
       - volume_swarm_certificates:/etc/traefik/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -500,6 +517,19 @@ EOF
 log_ok "Stack Traefik criado em /tmp/stack-traefik.yml"
 sleep 1
 
+# NOVO: preparar acme.json dentro do volume (permissão 600)
+print_step "Preparando acme.json (permissão 600) no volume de certificados"
+docker run --rm \
+  -v volume_swarm_certificates:/etc/traefik/letsencrypt \
+  bash:5.2 \
+  bash -lc 'touch /etc/traefik/letsencrypt/acme.json && chmod 600 /etc/traefik/letsencrypt/acme.json'
+if [ $? -ne 0 ]; then
+  log_error "Falha ao preparar acme.json no volume. Verifique permissões/volume e tente novamente."
+  exit 1
+fi
+log_ok "acme.json pronto."
+sleep 1
+
 #############################################
 # 13/14 - Fazendo deploy do Portainer
 #############################################
@@ -516,21 +546,10 @@ sleep 5
 
 echo -e "\n${OK} - Deploy enviado. Verificando status..."
 
-# --------- Verificação ROBUSTA (até 90s) ----------
-MAX_WAIT=90
-ELAPSED=0
-until \
-  [ "$(docker stack ps portainer --format '{{.CurrentState}}' 2>/dev/null | grep -c Running)" -gt 0 ] && \
-  [ "$(docker stack ps traefik   --format '{{.CurrentState}}' 2>/dev/null | grep -c Running)"   -gt 0 ]; do
-  sleep 3
-  ELAPSED=$((ELAPSED+3))
-  if [ $ELAPSED -ge $MAX_WAIT ]; then
-    break
-  fi
-done
-
-P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep -c "Running")
-T_STATUS=$(docker stack ps traefik   --format "{{.CurrentState}}" 2>/dev/null | grep -c "Running")
+# Verifica se temos pelo menos 1 container "Running" em cada stack
+sleep 5
+P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
 
 if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo
@@ -545,29 +564,17 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo -e "       docker stack ps portainer"
   echo -e "       docker stack ps traefik"
   echo
-  echo -e "       ${INFO} - Minha Automação MilionárIA: \e[33mhttps://automilionaria.trade\e[0m"
+  echo -e "       ${INFO} - Minha Automação MilionárIA: \e[33mhttps://automilionaria.trade\e[0m"   
   echo "========================================"
   echo
 
-  # Mensagem de destaque sobre prazo de login
-  echo -e "       \e[31mATENÇÃO:\e[0m Você tem \e[31mAPENAS 5 minutos\e[0m para fazer seu primeiro login no Portainer."
-  echo -e "       Caso ultrapasse esse tempo, será necessário \e[31mrefazer toda a instalação.\e[0m"
+  # Mensagem de destaque
+  echo -e "       \e[31mATENÇÃO:\e[0m Se estiver usando Cloudflare com proxy (nuvem laranja), \e[1mDNS-01 já está ativo\e[0m."
+  echo -e "       Com HTTP-01, garanta porta 80 aberta e registro \e[1msem proxy\e[0m (nuvem cinza) até emitir o certificado."
   echo
 else
   log_error "Um ou mais serviços não estão em Running."
-  echo "------ Serviços ------"
-  docker service ls
-  echo "------ PS Portainer ------"
-  docker service ps portainer_portainer --no-trunc
-  echo "------ PS Traefik ------"
-  docker service ps traefik_traefik --no-trunc
-  echo "------ Logs Traefik (últimos 200) ------"
-  docker service logs traefik_traefik -n 200
-  echo "------ Logs Portainer (últimos 100) ------"
-  docker service logs portainer_portainer -n 100
-  echo "------ Portas 80/443 ocupadas? ------"
-  ss -ltnp | egrep ':80 |:443 ' || true
-  echo "-----------------------"
-  echo "Verifique as mensagens acima, corrija e rode novamente."
+  echo "Verifique com: docker stack ps portainer / traefik"
+  echo "Corrija o problema e tente novamente."
   exit 1
 fi
