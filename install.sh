@@ -1,4 +1,4 @@
-au tinstalador portainer traeifk:
+auto instalador portainer traeifk:
 
 #!/bin/bash
 
@@ -12,6 +12,7 @@ RESET="\e[0m"
 GREEN="\e[32m"
 BLUE="\e[34m"
 WHITE="\e[97m"
+YELLOW="\e[33m"
 OK="[ ${GREEN}OK${RESET} ]"
 INFO="[ ${BLUE}INFO${RESET} ]"
 ERROR="[ \e[31mERRO${RESET} ]"
@@ -218,7 +219,13 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
-  ...
+  # ... (linha original comentada para evitar erro de execução)
+  # ...
+
+  # --- Sanitização do domínio (remove http/https e barras finais) ---
+  PORTAINER_DOMAIN=${PORTAINER_DOMAIN#http://}
+  PORTAINER_DOMAIN=${PORTAINER_DOMAIN#https://}
+  PORTAINER_DOMAIN=${PORTAINER_DOMAIN%/}
 
   # Mensagem centralizada, entre barras
   echo
@@ -291,14 +298,15 @@ services:
         constraints:
           - node.role == manager
       labels:
-        - traefik.enable=true
-        - traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
-        - traefik.http.services.portainer.loadbalancer.server.port=9000
-        - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
-        - traefik.http.routers.portainer.service=portainer
-        - traefik.docker.network=${NETWORK_NAME}
-        - traefik.http.routers.portainer.entrypoints=websecure
-        - traefik.http.routers.portainer.priority=1
+        - "traefik.enable=true"
+        - "traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)"
+        - "traefik.http.routers.portainer.entrypoints=websecure"
+        - "traefik.http.routers.portainer.tls=true"
+        - "traefik.http.routers.portainer.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+        - "traefik.http.routers.portainer.service=portainer"
+        - "traefik.docker.network=${NETWORK_NAME}"
+        - "traefik.http.routers.portainer.priority=1"
 
 networks:
   ${NETWORK_NAME}:
@@ -317,12 +325,19 @@ sleep 1
 # 12/14 - Gerando stack do Traefik
 #############################################
 print_step "Gerando arquivo /tmp/stack-traefik.yml"
+
+# --- Garante acme.json no volume com permissão correta ---
+CERT_PATH="/var/lib/docker/volumes/volume_swarm_certificates/_data"
+sudo mkdir -p "\$CERT_PATH"
+sudo touch "\$CERT_PATH/acme.json"
+sudo chmod 600 "\$CERT_PATH/acme.json"
+
 cat > /tmp/stack-traefik.yml <<EOF
 version: "3.7"
 
 services:
   traefik:
-    image: traefik:v2.11.2
+    image: traefik:v2.11.30
     command:
       # Descoberta via Docker/Swarm
       - "--api.dashboard=true"
@@ -338,69 +353,63 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
       - "--entrypoints.websecure.address=:443"
 
-      # **Preservar IP real do cliente** para o backend (Chatwoot/Rails ver o X-Forwarded-For correto)
+      # Preservar IP real do cliente
       - "--entrypoints.web.forwardedHeaders.insecure=true"
       - "--entrypoints.websecure.forwardedHeaders.insecure=true"
 
-      # Timeouts para upstreams (evita travas em uploads/long polls)
+      # Timeouts upstream
       - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
       - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
       - "--serversTransport.forwardingTimeouts.idleConnTimeout=90s"
 
-      # Let's Encrypt
+      # Let's Encrypt (ACME HTTP-01)
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencryptresolver.acme.email=${EMAIL_LETSENCRYPT}"
 
-      # Logs
+      # Logs (stdout)
       - "--log.level=INFO"
-      - "--log.format=common"
-      - "--log.filePath=/var/log/traefik/traefik.log"
       - "--accesslog=true"
-      - "--accesslog.filepath=/var/log/traefik/access-log"
 
     deploy:
       placement:
         constraints:
           - node.role == manager
       labels:
-        - traefik.enable=true
+        - "traefik.enable=true"
 
-        # Redirecionar HTTP->HTTPS catch‑all
-        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
-        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
-        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
-        - traefik.http.routers.http-catchall.entrypoints=web
-        - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
-        - traefik.http.routers.http-catchall.priority=1
+        # Redirecionar HTTP->HTTPS catch-all
+        - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
+        - "traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)"
+        - "traefik.http.routers.http-catchall.entrypoints=web"
+        - "traefik.http.routers.http-catchall.middlewares=redirect-https@docker"
+        - "traefik.http.routers.http-catchall.priority=1"
 
         ###################################################################
         # Middlewares globais definidos no Traefik (reutilizáveis)
         ###################################################################
-
-        # Compressão (gzip) — reduz payload nos widgets
-        - traefik.http.middlewares.compress.compress=true
+        - "traefik.http.middlewares.compress.compress=true"
 
         # Buffering — permite uploads maiores (ex.: imagens, PDFs)
-        - traefik.http.middlewares.buffering.buffering.maxRequestBodyBytes=20000000
-        - traefik.http.middlewares.buffering.buffering.maxResponseBodyBytes=20000000
-        - traefik.http.middlewares.buffering.buffering.memRequestBodyBytes=2097152
-        - traefik.http.middlewares.buffering.buffering.retryExpression=IsNetworkError() && Attempts() <= 2
+        - "traefik.http.middlewares.buffering.buffering.maxRequestBodyBytes=20000000"
+        - "traefik.http.middlewares.buffering.buffering.maxResponseBodyBytes=20000000"
+        - "traefik.http.middlewares.buffering.buffering.memRequestBodyBytes=2097152"
+        - "traefik.http.middlewares.buffering.buffering.retryExpression=IsNetworkError() && Attempts() <= 2"
 
-        # Rate limit "alto e seguro" na borda (protege Chatwoot sem bloquear usuário normal)
-        # 120 requisições por minuto por IP, com burst 240.
-        - traefik.http.middlewares.ratelimit-public.ratelimit.period=1m
-        - traefik.http.middlewares.ratelimit-public.ratelimit.average=120
-        - traefik.http.middlewares.ratelimit-public.ratelimit.burst=240
+        # Rate limit "alto e seguro" na borda
+        - "traefik.http.middlewares.ratelimit-public.ratelimit.period=1m"
+        - "traefik.http.middlewares.ratelimit-public.ratelimit.average=120"
+        - "traefik.http.middlewares.ratelimit-public.ratelimit.burst=240"
 
         # Security headers básicos (sem quebrar widget)
-        - traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer-when-downgrade
-        - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
-        - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
-        - traefik.http.middlewares.secure-headers.headers.stsPreload=true
-        - traefik.http.middlewares.secure-headers.headers.browserXssFilter=true
-        - traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true
+        - "traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer-when-downgrade"
+        - "traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000"
+        - "traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true"
+        - "traefik.http.middlewares.secure-headers.headers.stsPreload=true"
+        - "traefik.http.middlewares.secure-headers.headers.browserXssFilter=true"
+        - "traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true"
 
     volumes:
       - volume_swarm_certificates:/etc/traefik/letsencrypt
@@ -468,7 +477,7 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo -e "       docker stack ps portainer"
   echo -e "       docker stack ps traefik"
   echo
-  echo -e "       ${INFO} - Minha Automação MilionárIA: \e[33mhttps://automilionaria.trade\e[0m"   
+  echo -e "       ${INFO} - Minha Automação MilionárIA: \e[33mhttps://automilionaria.trade\e[0m"
   echo "========================================"
   echo
 
