@@ -54,6 +54,37 @@ echo -e "${YELLOW}                               Auto Instalador                
 echo -e "${YELLOW}           Minha Automação MilionárIA: https://automilionaria.trade          ${RESET}"
 echo
    
+#!/bin/bash
+
+############################################################
+#               AUTO-INSTALADOR PORTAINER+TRAEFIK
+#               Estilo “passo a passo” colorido
+############################################################
+
+# -------------- Cores / Estilos --------------
+RESET="\e[0m"
+GREEN="\e[32m"
+BLUE="\e[34m"
+YELLOW="\e[33m"
+WHITE="\e[97m"
+OK="[ ${GREEN}OK${RESET} ]"
+INFO="[ ${BLUE}INFO${RESET} ]"
+ERROR="[ \e[31mERRO${RESET} ]"
+
+# -------------- Funções de Log --------------
+function log_ok()    { echo -e "${OK} - $1"; }
+function log_info()  { echo -e "${INFO} - $1"; }
+function log_error() { echo -e "${ERROR} - $1"; }
+
+# -------------- Banner Inicial --------------
+clear
+echo -e "${GREEN}                                                                              ${RESET}"
+echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
+echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
+echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
+echo -e "${YELLOW}                               Auto Instalador                               ${RESET}"
+echo -e "${YELLOW}           Minha Automação MilionárIA: https://automilionaria.trade          ${RESET}"
+echo
 sleep 1
 
 # Definimos o total de etapas para ir numerando
@@ -180,11 +211,11 @@ if [ "$SWARM_ACTIVE" != "active" ]; then
     docker swarm init || true
   else
     echo
-echo -e "========================================"
-echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
-echo -e "========================================\n"
+    echo -e "========================================"
+    echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+    echo -e "========================================\n"
 
-read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
+    read -p "Este, é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
     if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
       docker swarm init --advertise-addr "$DETECTED_IP" || true
     else
@@ -218,6 +249,7 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
+  read -p $'\e[33mCloudflare API Token (DNS Edit da zona; ENTER para pular e usar HTTP-01): \e[0m' CF_DNS_API_TOKEN
   # ...
 
   # --- Sanitização do domínio (remove http/https e barras finais) ---
@@ -233,6 +265,11 @@ while true; do
   echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
   echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
   echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
+  if [ -n "$CF_DNS_API_TOKEN" ]; then
+    echo -e "               - Modo ACME: \e[32mDNS-01 (Cloudflare)\e[0m"
+  else
+    echo -e "               - Modo ACME: \e[33mHTTP-01 (porta 80 aberta, proxy desligado)\e[0m"
+  fi
   echo "========================================"
   echo
 
@@ -330,6 +367,29 @@ sudo mkdir -p "$CERT_PATH"
 sudo touch "$CERT_PATH/acme.json"
 sudo chmod 600 "$CERT_PATH/acme.json"
 
+# --- Bloco ACME dinâmico (HTTP-01 x DNS-01 Cloudflare) ---
+if [ -n "$CF_DNS_API_TOKEN" ]; then
+  ACME_BLOCK=$(cat <<'ACME'
+      # Let's Encrypt (ACME DNS-01 via Cloudflare)
+      - "--certificatesresolvers.letsencryptresolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.letsencryptresolver.acme.dnschallenge.provider=cloudflare"
+ACME
+)
+  ENV_BLOCK=$(cat <<ENVVARS
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+ENVVARS
+)
+else
+  ACME_BLOCK=$(cat <<'ACME'
+      # Let's Encrypt (ACME HTTP-01)
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
+ACME
+)
+  ENV_BLOCK=""
+fi
+
 cat > /tmp/stack-traefik.yml <<EOF
 version: "3.7"
 
@@ -360,9 +420,7 @@ services:
       - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
       - "--serversTransport.forwardingTimeouts.idleConnTimeout=90s"
 
-      # Let's Encrypt (ACME HTTP-01)
-      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
+${ACME_BLOCK}
       - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencryptresolver.acme.email=${EMAIL_LETSENCRYPT}"
 
@@ -370,6 +428,7 @@ services:
       - "--log.level=INFO"
       - "--accesslog=true"
 
+${ENV_BLOCK}
     deploy:
       placement:
         constraints:
@@ -502,10 +561,10 @@ else
   docker service ps portainer_portainer --no-trunc
   echo "------ PS Traefik ------"
   docker service ps traefik_traefik --no-trunc
-  echo "------ Logs Traefik (últimos 120) ------"
-  docker service logs traefik_traefik -n 120
-  echo "------ Logs Portainer (últimos 60) ------"
-  docker service logs portainer_portainer -n 60
+  echo "------ Logs Traefik (últimos 200) ------"
+  docker service logs traefik_traefik -n 200
+  echo "------ Logs Portainer (últimos 100) ------"
+  docker service logs portainer_portainer -n 100
   echo "------ Portas 80/443 ocupadas? ------"
   ss -ltnp | egrep ':80 |:443 ' || true
   echo "-----------------------"
