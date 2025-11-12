@@ -4,7 +4,8 @@ set -e
 #####################################################################
 #  MAM — Portainer + Traefik v2.11.2 (Docker Swarm, HTTP-01/ACME)
 #  Sem proxy (Cloudflare cinza). Cert via porta 80 direta.
-#  Inclui: checagens, acme.json 600, health-wait, criar admin Portainer.
+#  Inclui: checagens, acme.json 600, health-wait, criar admin Portainer,
+#          limpeza de serviços antigos (removendo DOCKER_API_VERSION herdado).
 #####################################################################
 
 RESET="\e[0m"; GREEN="\e[32m"; BLUE="\e[34m"; YELLOW="\e[33m"; RED="\e[31m"; B="\e[1m"
@@ -16,9 +17,10 @@ log_err(){ echo -e "${ERR} $1"; }
 TOTAL=20; STEP=1
 step(){ echo -e "${STEP}/${TOTAL} - ${OK} $1"; STEP=$((STEP+1)); }
 
-# -------- 1. Atualizações básicas / dependências --------
 clear
 echo -e "${GREEN}${B}== MAM: Traefik v2 + Portainer (Swarm) ==${RESET}"
+
+# -------- 1. Atualizações básicas / dependências --------
 step "Atualizando pacotes (apt-get update/upgrade)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y >/dev/null
@@ -104,8 +106,16 @@ docker run --rm -v volume_swarm_certificates:/etc/traefik/letsencrypt bash:5.2 b
   'mkdir -p /etc/traefik/letsencrypt && touch /etc/traefik/letsencrypt/acme.json && chmod 600 /etc/traefik/letsencrypt/acme.json'
 log_ok "acme.json pronto"
 
-# -------- 6. Stacks YAML --------
-step "Gerando stack do Traefik (v2.11.2, HTTP-01)"
+# -------- 6. Limpeza de serviços antigos (evita env herdadas) --------
+step "Removendo serviços antigos (traefik/portainer) para limpar env herdadas"
+docker service rm traefik_traefik >/dev/null 2>&1 || true
+docker service rm traefik_whoami  >/dev/null 2>&1 || true
+docker service rm portainer_portainer >/dev/null 2>&1 || true
+docker service rm portainer_agent     >/dev/null 2>&1 || true
+sleep 2
+
+# -------- 7. Stacks YAML --------
+step "Gerando stack do Traefik (v2.11.2, HTTP-01, API Docker 1.52)"
 cat > /tmp/stack-traefik.yml <<EOF
 version: "3.8"
 services:
@@ -137,7 +147,7 @@ services:
       - "--accesslog=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - volume_swarm_certificates:/etc/traefik/letsencrypt"
+      - volume_swarm_certificates:/etc/traefik/letsencrypt
     ports:
       - target: 80
         published: 80
@@ -146,9 +156,15 @@ services:
         published: 443
         mode: host
     networks: [ ${NETWORK_NAME} ]
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
 networks:
   ${NETWORK_NAME}:
     external: true
+
 volumes:
   volume_swarm_certificates:
     external: true
@@ -168,7 +184,8 @@ services:
     deploy:
       mode: global
       placement:
-        constraints: [ "node.platform.os == linux" ]
+        constraints:
+          - node.platform.os == linux
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -181,7 +198,8 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [ "node.role == manager" ]
+        constraints:
+          - node.role == manager
       labels:
         - traefik.enable=true
         - traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
@@ -189,20 +207,21 @@ services:
         - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
         - traefik.http.services.portainer.loadbalancer.server.port=9000
         - traefik.docker.network=${NETWORK_NAME}
+
 networks:
   ${NETWORK_NAME}:
     external: true
+
 volumes:
   portainer_data:
     external: true
 EOF
 log_ok "stack-portainer.yml pronto"
 
-# -------- 7. Deploy e waits --------
+# -------- 8. Deploy e waits --------
 step "Deploy Traefik"
 docker stack deploy -c /tmp/stack-traefik.yml traefik >/dev/null
 
-# Espera Traefik subir (task Running) e socket respondendo
 step "Aguardando Traefik ficar online (até 5 min)"
 TRIES=100
 until docker service ls | grep -q "traefik_traefik"; do sleep 3; done
@@ -214,15 +233,13 @@ log_ok "Traefik Running"
 step "Deploy Portainer"
 docker stack deploy -c /tmp/stack-portainer.yml portainer >/dev/null
 
-# -------- 8. Aguarda HTTPS responder e cria admin --------
+# -------- 9. Aguarda HTTPS responder e cria admin --------
 step "Aguardando https://${PORTAINER_DOMAIN} responder (emitir cert)"
-# Vamos tentar até 5 minutos. Primeiro aceita self-signed -k, depois confere sem -k.
 TIMEOUT=100
 until curl -fsS -k "https://${PORTAINER_DOMAIN}/api/status" >/dev/null 2>&1; do
   sleep 3; TIMEOUT=$((TIMEOUT-1)); [[ $TIMEOUT -le 0 ]] && break
 done
 
-# tenta sem -k (cert válido). Se falhar, ainda cria conta com -k para não travar.
 if curl -fsS "https://${PORTAINER_DOMAIN}/api/status" >/dev/null 2>&1; then
   log_ok "Portainer responde com TLS válido"
   CURL_TLS="curl -fsS"
@@ -231,7 +248,6 @@ else
   CURL_TLS="curl -fsS -k"
 fi
 
-# cria admin se ainda não inicializado
 step "Criando conta admin no Portainer (se necessário)"
 if $CURL_TLS "https://${PORTAINER_DOMAIN}/api/status" | jq -e '.Authentication' >/dev/null 2>&1; then
   INIT_PAYLOAD=$(jq -n --arg u "$PORTAINER_USER" --arg p "$PORTAINER_PASS" '{Username:$u, Password:$p}')
@@ -242,7 +258,7 @@ else
   log_ok "Portainer já inicializado (ou status endpoint diferente)"
 fi
 
-# -------- 9. Status final / Dicas --------
+# -------- 10. Status final / Dicas --------
 step "Status dos serviços"
 docker service ls | egrep 'traefik|portainer' || true
 
