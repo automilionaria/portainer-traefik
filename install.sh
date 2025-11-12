@@ -54,7 +54,6 @@ echo -e "${YELLOW}                               Auto Instalador                
 echo -e "${YELLOW}           Minha Automação MilionárIA: https://automilionaria.trade          ${RESET}"
 echo
    
-                                                                                                                                                                                                                                                                                                                                                                                                                              
 sleep 1
 
 # Definimos o total de etapas para ir numerando
@@ -219,7 +218,6 @@ while true; do
   read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
   read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
   read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
-  # ... (linha original comentada para evitar erro de execução)
   # ...
 
   # --- Sanitização do domínio (remove http/https e barras finais) ---
@@ -328,9 +326,9 @@ print_step "Gerando arquivo /tmp/stack-traefik.yml"
 
 # --- Garante acme.json no volume com permissão correta ---
 CERT_PATH="/var/lib/docker/volumes/volume_swarm_certificates/_data"
-sudo mkdir -p "\$CERT_PATH"
-sudo touch "\$CERT_PATH/acme.json"
-sudo chmod 600 "\$CERT_PATH/acme.json"
+sudo mkdir -p "$CERT_PATH"
+sudo touch "$CERT_PATH/acme.json"
+sudo chmod 600 "$CERT_PATH/acme.json"
 
 cat > /tmp/stack-traefik.yml <<EOF
 version: "3.7"
@@ -459,10 +457,21 @@ sleep 5
 
 echo -e "\n${OK} - Deploy enviado. Verificando status..."
 
-# Verifica se temos pelo menos 1 container "Running" em cada stack
-sleep 5
-P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
-T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+# --------- Verificação ROBUSTA (até 90s) ----------
+MAX_WAIT=90
+ELAPSED=0
+until \
+  [ "$(docker stack ps portainer --format '{{.CurrentState}}' 2>/dev/null | grep -c Running)" -gt 0 ] && \
+  [ "$(docker stack ps traefik   --format '{{.CurrentState}}' 2>/dev/null | grep -c Running)"   -gt 0 ]; do
+  sleep 3
+  ELAPSED=$((ELAPSED+3))
+  if [ $ELAPSED -ge $MAX_WAIT ]; then
+    break
+  fi
+done
+
+P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep -c "Running")
+T_STATUS=$(docker stack ps traefik   --format "{{.CurrentState}}" 2>/dev/null | grep -c "Running")
 
 if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo
@@ -487,7 +496,19 @@ if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
   echo
 else
   log_error "Um ou mais serviços não estão em Running."
-  echo "Verifique com: docker stack ps portainer / traefik"
-  echo "Corrija o problema e tente novamente."
+  echo "------ Serviços ------"
+  docker service ls
+  echo "------ PS Portainer ------"
+  docker service ps portainer_portainer --no-trunc
+  echo "------ PS Traefik ------"
+  docker service ps traefik_traefik --no-trunc
+  echo "------ Logs Traefik (últimos 120) ------"
+  docker service logs traefik_traefik -n 120
+  echo "------ Logs Portainer (últimos 60) ------"
+  docker service logs portainer_portainer -n 60
+  echo "------ Portas 80/443 ocupadas? ------"
+  ss -ltnp | egrep ':80 |:443 ' || true
+  echo "-----------------------"
+  echo "Verifique as mensagens acima, corrija e rode novamente."
   exit 1
 fi
