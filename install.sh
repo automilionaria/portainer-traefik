@@ -1,186 +1,324 @@
 #!/bin/bash
-set -e
 
-#####################################################################
-#  MAM — Portainer + Traefik v2.11.2 (Docker Swarm, HTTP-01/ACME)
-#  Sem proxy (Cloudflare cinza). Cert via porta 80 direta.
-#  Inclui: checagens, acme.json 600, health-wait, criar admin Portainer,
-#          limpeza de serviços antigos (removendo DOCKER_API_VERSION herdado).
-#####################################################################
+############################################################
+#               AUTO-INSTALADOR PORTAINER+TRAEFIK
+#               Estilo “passo a passo” colorido
+############################################################
 
-RESET="\e[0m"; GREEN="\e[32m"; BLUE="\e[34m"; YELLOW="\e[33m"; RED="\e[31m"; B="\e[1m"
-OK="[ ${GREEN}OK${RESET} ]"; INFO="[ ${BLUE}INFO${RESET} ]"; ERR="[ ${RED}ERRO${RESET} ]"
-log_ok(){ echo -e "${OK} $1"; }
-log_info(){ echo -e "${INFO} $1"; }
-log_err(){ echo -e "${ERR} $1"; }
+# -------------- Cores / Estilos --------------
+RESET="\e[0m"
+GREEN="\e[32m"
+BLUE="\e[34m"
+WHITE="\e[97m"
+YELLOW="\e[33m"
+OK="[ ${GREEN}OK${RESET} ]"
+INFO="[ ${BLUE}INFO${RESET} ]"
+ERROR="[ \e[31mERRO${RESET} ]"
 
-TOTAL=20; STEP=1
-step(){ echo -e "${STEP}/${TOTAL} - ${OK} $1"; STEP=$((STEP+1)); }
+# -------------- Funções de Log --------------
+function log_ok()    { echo -e "${OK} - $1"; }
+function log_info()  { echo -e "${INFO} - $1"; }
+function log_error() { echo -e "${ERROR} - $1"; }
 
+# -------------- Banner Inicial --------------
 clear
-echo -e "${GREEN}${B}== MAM: Traefik v2 + Portainer (Swarm) ==${RESET}"
-
-# -------- 1. Atualizações básicas / dependências --------
-step "Atualizando pacotes (apt-get update/upgrade)"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y >/dev/null
-apt-get upgrade -y >/dev/null || true
-log_ok "Sistema atualizado"
-
-step "Instalando deps (sudo, curl, jq, dnsutils, python3, chrony)"
-apt-get install -y sudo curl jq dnsutils python3 chrony >/dev/null || true
-(systemctl enable --now chrony || systemctl enable --now chronyd || true) >/dev/null 2>&1 || true
-timedatectl set-ntp true >/dev/null 2>&1 || true
-log_ok "Dependências OK (NTP habilitado)"
-
-# -------- 2. Docker / Swarm --------
-step "Instalando/checando Docker"
-if ! command -v docker &>/dev/null; then
-  curl -fsSL https://get.docker.com -o get-docker.sh
-  sh get-docker.sh >/dev/null
-fi
-docker version >/dev/null
-log_ok "Docker OK"
-
-step "Inicializando Docker Swarm (se necessário)"
-if [[ "$(docker info 2>/dev/null | awk '/Swarm/{print $2}')" != "active" ]]; then
-  IP=$(hostname -I | awk '{print $1}')
-  docker swarm init --advertise-addr "$IP" >/dev/null || true
-fi
-[[ "$(docker info 2>/dev/null | awk '/Swarm/{print $2}')" == "active" ]] || { log_err "Falha ao iniciar Swarm"; exit 1; }
-log_ok "Swarm ativo"
-
-# -------- 3. Input do usuário --------
-step "Coletando dados"
-read -p $'\e[33mDomínio do Portainer (ex: portainer.seudominio.com): \e[0m' PORTAINER_DOMAIN
-read -p $'\e[33mUsuário do Portainer (admin): \e[0m' PORTAINER_USER
-read -s -p $'\e[33mSenha do Portainer (mín. 12 chars, com @ ou _): \e[0m' PORTAINER_PASS; echo
-read -p $'\e[33mNome da rede overlay (ex: mamNet): \e[0m' NETWORK_NAME
-read -p $'\e[33mNome do servidor (label): \e[0m' SERVER_NAME
-read -p $'\e[33mE-mail para Let\'s Encrypt (ACME): \e[0m' ACME_EMAIL
-
-PORTAINER_DOMAIN=${PORTAINER_DOMAIN#http://}
-PORTAINER_DOMAIN=${PORTAINER_DOMAIN#https://}
-PORTAINER_DOMAIN=${PORTAINER_DOMAIN%/}
-
+echo -e "${GREEN}                                                                              ${RESET}"
+echo -e "${GREEN}                           .-----------------------.                          ${RESET}"
+echo -e "${GREEN}                           | INICIANDO INSTALAÇÃO  |                          ${RESET}"
+echo -e "${GREEN}                           '-----------------------'                          ${RESET}"
+echo -e "${WHITE}  _______                      __              __                             ${RESET}"
+echo -e "${WHITE} |       \                    |  \            |  \                            ${RESET}"
+echo -e "${WHITE} | ▓▓▓▓▓▓▓\ ______   ______  _| ▓▓_    ______  \▓▓_______   ______   ______   ${RESET}"
+echo -e "${WHITE} | ▓▓__/ ▓▓/      \ /      \|   ▓▓ \  |      \|  \       \ /      \ /      \  ${RESET}"
+echo -e "${WHITE} | ▓▓    ▓▓  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\\▓▓▓▓▓▓   \▓▓▓▓▓▓\ ▓▓ ▓▓▓▓▓▓▓\  ▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ${RESET}"
+echo -e "${WHITE} | ▓▓▓▓▓▓▓| ▓▓  | ▓▓ ▓▓   \▓▓ | ▓▓ __ /      ▓▓ ▓▓ ▓▓  | ▓▓ ▓▓    ▓▓ ▓▓   \▓▓ ${RESET}"
+echo -e "${WHITE} | ▓▓     | ▓▓__/ ▓▓ ▓▓       | ▓▓|  \  ▓▓▓▓▓▓▓ ▓▓ ▓▓  | ▓▓ ▓▓▓▓▓▓▓▓ ▓▓       ${RESET}"
+echo -e "${WHITE} | ▓▓      \▓▓    ▓▓ ▓▓        \▓▓  ▓▓\▓▓    ▓▓ ▓▓ ▓▓  | ▓▓\▓▓     \ ▓▓       ${RESET}"
+echo -e "${WHITE}  \▓▓       \▓▓▓▓▓▓ \▓▓         \▓▓▓▓  \▓▓▓▓▓▓▓\▓▓\▓▓   \▓▓ \▓▓▓▓▓▓▓\▓▓       ${RESET}"
+echo -e "${WHITE}                ________                             ______  __ __            ${RESET}"
+echo -e "${WHITE}      __        |        \                           /      \|  \  \          ${RESET}"
+echo -e "${WHITE}     |  \        \▓▓▓▓▓▓▓▓ ______   ______   ______ |  ▓▓▓▓▓▓\\▓▓ ▓▓   __     ${RESET}"
+echo -e "${WHITE}   _ | ▓▓__        | ▓▓   /      \ |      \ /      \| ▓▓_  \▓▓  \ ▓▓  /  \    ${RESET}"
+echo -e "${WHITE}  |    ▓▓  \       | ▓▓  |  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\  ▓▓▓▓▓▓\ ▓▓ \   | ▓▓ ▓▓_/  ▓▓    ${RESET}"
+echo -e "${WHITE}   \▓▓▓▓▓▓▓▓       | ▓▓  | ▓▓   \▓▓/      ▓▓ ▓▓    ▓▓ ▓▓▓▓   | ▓▓ ▓▓   ▓▓     ${RESET}"
+echo -e "${WHITE}     | ▓▓          | ▓▓  | ▓▓     |  ▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓ ▓▓     | ▓▓ ▓▓▓▓▓▓\     ${RESET}"
+echo -e "${WHITE}      \▓▓          | ▓▓  | ▓▓      \▓▓    ▓▓\▓▓     \ ▓▓     | ▓▓ ▓▓  \▓▓\    ${RESET}"
+echo -e "${WHITE}                   \▓▓   \▓▓       \▓▓▓▓▓▓▓ \▓▓▓▓▓▓▓\▓▓      \▓▓\▓▓   \▓▓     ${RESET}"
+echo -e "${WHITE}    ______ ______ ______ ______ ______ ______ ______ ______ ______ ______     ${RESET}"
+echo -e "${WHITE}   |      \      \      \      \      \      \      \      \      \      \    ${RESET}"
+echo -e "${WHITE}    \▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓\▓▓▓▓▓▓    ${RESET}"
+echo -e "${GREEN}                                                                              ${RESET}"
+echo -e "${YELLOW}                               Auto Instalador                               ${RESET}"
+echo -e "${YELLOW}           Minha Automação MilionárIA: https://automilionaria.trade          ${RESET}"
 echo
-echo "--------- Confirmação ---------"
-echo "Domínio Portainer: https://${PORTAINER_DOMAIN}"
-echo "Usuário Portainer: ${PORTAINER_USER}"
-echo "Servidor (label):  ${SERVER_NAME}"
-echo "Rede overlay:      ${NETWORK_NAME}"
-echo "E-mail ACME:       ${ACME_EMAIL}"
-echo "-------------------------------"
-read -p "Está tudo correto? (s/n): " CONFIRM
-[[ "$CONFIRM" =~ ^[Ss]$ ]] || { log_err "Cancelado."; exit 1; }
 
-# -------- 4. Checagens de portas / DNS --------
-step "Checando se as portas 80/443 estão livres"
-if ss -ltn '( sport = :80 or sport = :443 )' | grep -E 'LISTEN' >/dev/null; then
-  ss -ltnp | egrep ':80|:443' || true
-  log_err "Porta 80/443 em uso. Pare nginx/apache/outros e rode de novo."
+sleep 1
+
+# Definimos o total de etapas para ir numerando
+TOTAL_STEPS=15
+STEP=1
+
+# -------------- Helpers para etapas --------------
+function print_step() {
+  local msg="$1"
+  echo -e "${STEP}/${TOTAL_STEPS} - ${OK} - ${msg}"
+  STEP=$((STEP+1))
+}
+
+#############################################
+# 1/15 - Atualizar Sistema
+#############################################
+print_step "Fazendo Upgrade do sistema (apt-get update && upgrade)"
+sudo apt-get update && sudo apt-get upgrade -y
+if [ $? -ne 0 ]; then
+  log_error "Falha ao atualizar o sistema."
   exit 1
 fi
-log_ok "Portas 80/443 livres"
+log_ok "Sistema atualizado com sucesso."
+sleep 1
 
-step "Checando DNS do domínio (A/AAAA)"
-A_IP=$(dig +short A "$PORTAINER_DOMAIN" | tail -n1)
-AAAA_IP=$(dig +short AAAA "$PORTAINER_DOMAIN" | tail -n1)
-PUB_IP=$(curl -sS ipv4.icanhazip.com || true)
-log_info "A=${A_IP:-<nenhum>} | AAAA=${AAAA_IP:-<nenhum>} | IP público=${PUB_IP:-<indisponível>}"
-[[ -n "$A_IP" ]] || { log_err "Sem registro A no domínio. Aponte o A para o IP público."; exit 1; }
-if [[ -n "$AAAA_IP" && "$AAAA_IP" != "::1" ]]; then
-  echo -e "${YELLOW}Atenção:${RESET} Existe AAAA. Se seu host NÃO atende IPv6, remova o AAAA até a emissão do certificado."
+#############################################
+# 2/15 - Verificando/Instalando sudo
+#############################################
+print_step "Verificando/Instalando sudo"
+if ! dpkg -l | grep -q sudo; then
+  sudo apt-get install -y sudo
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar sudo."
+    exit 1
+  fi
 fi
-[[ "$A_IP" == "$PUB_IP" ]] || echo -e "${YELLOW}Aviso:${RESET} A ($A_IP) difere do IP público ($PUB_IP)."
+log_ok "sudo OK."
+sleep 1
 
-# -------- 5. Rede/volumes e acme.json --------
-step "Criando rede overlay e volumes"
-docker network create --driver overlay --attachable "$NETWORK_NAME" >/dev/null 2>&1 || true
-docker volume create portainer_data >/dev/null 2>&1 || true
-docker volume create volume_swarm_certificates >/dev/null 2>&1 || true
-log_ok "Rede/volumes OK"
+#############################################
+# 3/15 - Verificando/Instalando apt-utils
+#############################################
+print_step "Verificando/Instalando apt-utils"
+if ! dpkg -l | grep -q apt-utils; then
+  sudo apt-get install -y apt-utils
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar apt-utils."
+    exit 1
+  fi
+fi
+log_ok "apt-utils OK."
+sleep 1
 
-step "Preparando acme.json (perm 600) no volume"
-docker run --rm -v volume_swarm_certificates:/etc/traefik/letsencrypt bash:5.2 bash -lc \
-  'mkdir -p /etc/traefik/letsencrypt && touch /etc/traefik/letsencrypt/acme.json && chmod 600 /etc/traefik/letsencrypt/acme.json'
-log_ok "acme.json pronto"
+#############################################
+# 4/15 - Verificando/Instalando python3
+#############################################
+print_step "Verificando/Instalando python3"
+if ! command -v python3 &>/dev/null; then
+  sudo apt-get install -y python3
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar python3."
+    exit 1
+  fi
+fi
+log_ok "python3 OK."
+sleep 1
 
-# -------- 6. Limpeza de serviços antigos (evita env herdadas) --------
-step "Removendo serviços antigos (traefik/portainer) para limpar env herdadas"
-docker service rm traefik_traefik >/dev/null 2>&1 || true
-docker service rm traefik_whoami  >/dev/null 2>&1 || true
-docker service rm portainer_portainer >/dev/null 2>&1 || true
-docker service rm portainer_agent     >/dev/null 2>&1 || true
+#############################################
+# 5/15 - Verificando/Instalando git
+#############################################
+print_step "Verificando/Instalando git"
+if ! command -v git &>/dev/null; then
+  sudo apt-get install -y git
+  if [ $? -ne 0 ]; then
+    log_error "Falha ao instalar git."
+    exit 1
+  fi
+fi
+log_ok "git OK."
+sleep 1
+
+#############################################
+# 6/15 - Verificando/Instalando Docker
+#############################################
+print_step "Verificando/Instalando Docker"
+if ! command -v docker &>/dev/null; then
+  curl -fsSL https://get.docker.com -o get-docker.sh
+
+  # Tenta instalar Docker e verifica conflitos de travas
+  sh get-docker.sh
+  if ! command -v docker &>/dev/null; then
+    echo
+    echo -e "${ERROR} - Falha ao instalar Docker. Tentando liberar possíveis travas do apt..."
+    echo
+
+    # Modo de recuperação
+    sudo killall apt apt-get dpkg 2>/dev/null
+    sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock
+    sudo dpkg --configure -a
+    sleep 2
+    echo -e "${INFO} - Tentando novamente instalar Docker..."
+
+    # Tenta novamente
+    sh get-docker.sh
+    if ! command -v docker &>/dev/null; then
+      log_error "Instalação do Docker falhou novamente após tentar recuperar o sistema."
+      exit 1
+    fi
+  fi
+fi
+log_ok "Docker OK."
+sleep 1
+
+#############################################
+# 7/15 - Forçando Docker a aceitar clientes API v1.24
+#        (Portainer / Traefik antigos)
+#############################################
+print_step "Configurando Docker para aceitar clientes API v1.24 (daemon.json)"
+
+# Garante diretório
+sudo mkdir -p /etc/docker
+
+# Vamos precisar de jq se já existir daemon.json
+if ! command -v jq &>/dev/null; then
+  log_info "Instalando jq para editar JSON do Docker (daemon.json)"
+  sudo apt-get install -y jq
+fi
+
+if [ -f /etc/docker/daemon.json ]; then
+  log_info "Arquivo /etc/docker/daemon.json já existe. Fazendo backup e ajustando min-api-version para 1.24."
+  sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.bak.$(date +%s)
+
+  # Se o JSON estiver vazio ou inválido, caímos no fallback
+  if jq '.' /etc/docker/daemon.json >/dev/null 2>&1; then
+    sudo jq '.["min-api-version"]="1.24"' /etc/docker/daemon.json \
+      | sudo tee /etc/docker/daemon.json.tmp >/dev/null
+    sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
+  else
+    log_error "daemon.json existente está inválido. Substituindo por um novo com min-api-version=1.24 (backup mantido)."
+    cat <<JSON | sudo tee /etc/docker/daemon.json >/dev/null
+{
+  "min-api-version": "1.24"
+}
+JSON
+  fi
+else
+  log_info "Criando /etc/docker/daemon.json com min-api-version=1.24."
+  cat <<JSON | sudo tee /etc/docker/daemon.json >/dev/null
+{
+  "min-api-version": "1.24"
+}
+JSON
+fi
+
+log_ok "min-api-version=1.24 configurado no daemon.json."
+log_info "Reiniciando serviço Docker para aplicar configuração."
+
+if command -v systemctl &>/dev/null; then
+  sudo systemctl restart docker
+  sudo systemctl enable docker >/dev/null 2>&1 || true
+else
+  sudo service docker restart || true
+fi
+
 sleep 2
 
-# -------- 7. Stacks YAML --------
-step "Gerando stack do Traefik (v2.11.2, HTTP-01, API Docker 1.52)"
-cat > /tmp/stack-traefik.yml <<EOF
-version: "3.8"
-services:
-  traefik:
-    image: traefik:v2.11.2
-    environment:
-      - DOCKER_API_VERSION=1.52
-    command:
-      - "--api.dashboard=true"
-      - "--providers.docker.swarmMode=true"
-      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=${NETWORK_NAME}"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.forwardedHeaders.insecure=true"
-      - "--entrypoints.websecure.forwardedHeaders.insecure=true"
-      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
-      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
-      - "--serversTransport.forwardingTimeouts.idleConnTimeout=90s"
-      - "--certificatesresolvers.letsencryptresolver.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
-      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
-      - "--log.level=INFO"
-      - "--accesslog=true"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - volume_swarm_certificates:/etc/traefik/letsencrypt
-    ports:
-      - target: 80
-        published: 80
-        mode: host
-      - target: 443
-        published: 443
-        mode: host
-    networks: [ ${NETWORK_NAME} ]
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
+#############################################
+# 8/15 - Inicializando Docker Swarm
+#############################################
+print_step "Inicializando Docker Swarm (se não estiver ativo)"
+SWARM_ACTIVE=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
+if [ "$SWARM_ACTIVE" != "active" ]; then
+  log_info "Swarm não ativo. Tentando iniciar..."
+  DETECTED_IP=$(hostname -I | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+  if [ -z "$DETECTED_IP" ]; then
+    echo "Não foi possível detectar IP automaticamente."
+    docker swarm init || true
+  else
+    echo
+    echo -e "========================================"
+    echo -e "             Detectamos o \e[32mIP: $DETECTED_IP\e[0m"
+    echo -e "========================================\n"
 
-networks:
-  ${NETWORK_NAME}:
-    external: true
+    read -p "Este é o mesmo IP apontado para o seu domínio? (s/n): " CONF_IP
+    if [[ "$CONF_IP" =~ ^[Ss]$ ]]; then
+      docker swarm init --advertise-addr "$DETECTED_IP" || true
+    else
+      read -p "Informe o IP público IPv4 correto: " USER_IP
+      docker swarm init --advertise-addr "$USER_IP" || true
+    fi
+  fi
 
-volumes:
-  volume_swarm_certificates:
-    external: true
-EOF
-log_ok "stack-traefik.yml pronto"
+  # Verifica se o Swarm ficou ativo
+  SWARM_ACTIVE_AGAIN=$(docker info 2>/dev/null | grep "Swarm" | awk '{print $2}')
+  if [ "$SWARM_ACTIVE_AGAIN" != "active" ]; then
+    log_error "Falha ao iniciar o Swarm. Verifique IP e tente novamente."
+    exit 1
+  else
+    log_ok "Swarm inicializado com sucesso."
+  fi
+else
+  log_ok "Swarm já está ativo."
+fi
+sleep 1
 
-step "Gerando stack do Portainer (atrás do Traefik)"
+#############################################
+# 9/15 - Coletando dados do usuário
+#############################################
+print_step "Coletando dados (rede interna, servidor, e-mail, domínio Portainer)"
+
+while true; do
+  echo
+  echo "--------------------------------------"
+  read -p $'\e[33mNome da rede interna (overlay): \e[0m' NETWORK_NAME
+  read -p $'\e[33mNome do servidor (descrição/hostname): \e[0m' SERVER_NAME
+  read -p $'\e[33mE-mail para Let\'s Encrypt (Traefik): \e[0m' EMAIL_LETSENCRYPT
+  read -p $'\e[33mDomínio para Portainer (ex.: portainer.meudominio.com): \e[0m' PORTAINER_DOMAIN
+
+  echo
+  echo "========================================"
+  echo -e "             Você informou:"
+  echo -e "               - Rede interna: \e[32m$NETWORK_NAME\e[0m"
+  echo -e "               - Nome do servidor: \e[32m$SERVER_NAME\e[0m"
+  echo -e "               - E-mail: \e[32m$EMAIL_LETSENCRYPT\e[0m"
+  echo -e "               - Domínio Portainer: \e[32mhttps://$PORTAINER_DOMAIN\e[0m"
+  echo "========================================"
+  echo
+
+  read -p "Está tudo correto? (s/n): " CONF_ALL
+  if [[ "$CONF_ALL" =~ ^[Ss]$ ]]; then
+    break
+  fi
+  echo "Ok, vamos refazer..."
+done
+sleep 1
+
+#############################################
+# 10/15 - Criando volumes
+#############################################
+print_step "Criando volumes (portainer_data, volume_swarm_shared, volume_swarm_certificates)"
+docker volume create portainer_data
+docker volume create volume_swarm_shared
+docker volume create volume_swarm_certificates
+sleep 1
+
+#############################################
+# 11/15 - Criando rede overlay
+#############################################
+print_step "Criando rede overlay '$NETWORK_NAME'"
+docker network create --driver overlay --attachable "$NETWORK_NAME" || true
+sleep 1
+
+#############################################
+# 12/15 - Gerando stack do Portainer
+#############################################
+print_step "Gerando arquivo /tmp/stack-portainer.yml"
 cat > /tmp/stack-portainer.yml <<EOF
-version: "3.8"
+version: "3.7"
+
 services:
   agent:
     image: portainer/agent:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
-    networks: [ ${NETWORK_NAME} ]
+    networks:
+      - ${NETWORK_NAME}
     deploy:
       mode: global
       placement:
@@ -193,7 +331,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
-    networks: [ ${NETWORK_NAME} ]
+    networks:
+      - ${NETWORK_NAME}
     deploy:
       mode: replicated
       replicas: 1
@@ -203,79 +342,181 @@ services:
       labels:
         - traefik.enable=true
         - traefik.http.routers.portainer.rule=Host(\`${PORTAINER_DOMAIN}\`)
-        - traefik.http.routers.portainer.entrypoints=websecure
-        - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
         - traefik.http.services.portainer.loadbalancer.server.port=9000
+        - traefik.http.routers.portainer.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.portainer.service=portainer
         - traefik.docker.network=${NETWORK_NAME}
+        - traefik.http.routers.portainer.entrypoints=websecure
+        - traefik.http.routers.portainer.priority=1
 
 networks:
   ${NETWORK_NAME}:
     external: true
+    name: ${NETWORK_NAME}
 
 volumes:
   portainer_data:
     external: true
+    name: portainer_data
 EOF
-log_ok "stack-portainer.yml pronto"
+log_ok "Stack Portainer criado em /tmp/stack-portainer.yml"
+sleep 1
 
-# -------- 8. Deploy e waits --------
-step "Deploy Traefik"
-docker stack deploy -c /tmp/stack-traefik.yml traefik >/dev/null
+#############################################
+# 13/15 - Gerando stack do Traefik
+#############################################
+print_step "Gerando arquivo /tmp/stack-traefik.yml"
+cat > /tmp/stack-traefik.yml <<EOF
+version: "3.7"
 
-step "Aguardando Traefik ficar online (até 5 min)"
-TRIES=100
-until docker service ls | grep -q "traefik_traefik"; do sleep 3; done
-until [[ "$(docker service ps traefik_traefik --format '{{.CurrentState}}' | grep -c Running)" -ge 1 ]]; do
-  sleep 3; TRIES=$((TRIES-1)); [[ $TRIES -le 0 ]] && { log_err "Traefik não ficou Running"; exit 1; }
-done
-log_ok "Traefik Running"
+services:
+  traefik:
+    image: traefik:v2.11.2
+    command:
+      # Descoberta via Docker/Swarm
+      - "--api.dashboard=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=${NETWORK_NAME}"
 
-step "Deploy Portainer"
-docker stack deploy -c /tmp/stack-portainer.yml portainer >/dev/null
+      # Entrypoints HTTP/HTTPS
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
 
-# -------- 9. Aguarda HTTPS responder e cria admin --------
-step "Aguardando https://${PORTAINER_DOMAIN} responder (emitir cert)"
-TIMEOUT=100
-until curl -fsS -k "https://${PORTAINER_DOMAIN}/api/status" >/dev/null 2>&1; do
-  sleep 3; TIMEOUT=$((TIMEOUT-1)); [[ $TIMEOUT -le 0 ]] && break
-done
+      # Preservar IP real do cliente
+      - "--entrypoints.web.forwardedHeaders.insecure=true"
+      - "--entrypoints.websecure.forwardedHeaders.insecure=true"
 
-if curl -fsS "https://${PORTAINER_DOMAIN}/api/status" >/dev/null 2>&1; then
-  log_ok "Portainer responde com TLS válido"
-  CURL_TLS="curl -fsS"
+      # Timeouts
+      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=90s"
+
+      # Let's Encrypt
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencryptresolver.acme.storage=/etc/traefik/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencryptresolver.acme.email=${EMAIL_LETSENCRYPT}"
+
+      # Logs
+      - "--log.level=INFO"
+      - "--log.format=common"
+      - "--log.filePath=/var/log/traefik/traefik.log"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access-log"
+
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+
+        # Redirecionar HTTP->HTTPS catch-all
+        - traefik.http.middlewares.redirect-https.redirectscheme.scheme=https
+        - traefik.http.middlewares.redirect-https.redirectscheme.permanent=true
+        - traefik.http.routers.http-catchall.rule=Host(\`{host:.+}\`)
+        - traefik.http.routers.http-catchall.entrypoints=web
+        - traefik.http.routers.http-catchall.middlewares=redirect-https@docker
+        - traefik.http.routers.http-catchall.priority=1
+
+        # Middlewares globais
+        - traefik.http.middlewares.compress.compress=true
+
+        - traefik.http.middlewares.buffering.buffering.maxRequestBodyBytes=20000000
+        - traefik.http.middlewares.buffering.buffering.maxResponseBodyBytes=20000000
+        - traefik.http.middlewares.buffering.buffering.memRequestBodyBytes=2097152
+        - traefik.http.middlewares.buffering.buffering.retryExpression=IsNetworkError() && Attempts() <= 2
+
+        - traefik.http.middlewares.ratelimit-public.ratelimit.period=1m
+        - traefik.http.middlewares.ratelimit-public.ratelimit.average=120
+        - traefik.http.middlewares.ratelimit-public.ratelimit.burst=240
+
+        - traefik.http.middlewares.secure-headers.headers.referrerPolicy=no-referrer-when-downgrade
+        - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
+        - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
+        - traefik.http.middlewares.secure-headers.headers.stsPreload=true
+        - traefik.http.middlewares.secure-headers.headers.browserXssFilter=true
+        - traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true
+
+    volumes:
+      - volume_swarm_certificates:/etc/traefik/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+
+    networks:
+      - ${NETWORK_NAME}
+
+volumes:
+  volume_swarm_shared:
+    external: true
+    name: volume_swarm_shared
+
+  volume_swarm_certificates:
+    external: true
+    name: volume_swarm_certificates
+
+networks:
+  ${NETWORK_NAME}:
+    external: true
+    name: ${NETWORK_NAME}
+EOF
+log_ok "Stack Traefik criado em /tmp/stack-traefik.yml"
+sleep 1
+
+#############################################
+# 14/15 - Fazendo deploy do Portainer
+#############################################
+print_step "Deploy do Portainer (docker stack deploy)"
+docker stack deploy -c /tmp/stack-portainer.yml portainer
+sleep 2
+
+#############################################
+# 15/15 - Fazendo deploy do Traefik
+#############################################
+print_step "Deploy do Traefik (docker stack deploy)"
+docker stack deploy -c /tmp/stack-traefik.yml traefik
+sleep 5
+
+echo -e "\n${OK} - Deploy enviado. Verificando status..."
+
+sleep 5
+P_STATUS=$(docker stack ps portainer --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+T_STATUS=$(docker stack ps traefik --format "{{.CurrentState}}" 2>/dev/null | grep "Running" | wc -l)
+
+if [[ "$P_STATUS" -gt 0 && "$T_STATUS" -gt 0 ]]; then
+  echo
+  echo "========================================"
+  echo -e "       ${GREEN}Instalação concluída com sucesso!${RESET}"
+  echo -e "       ${INFO} - Rede interna: \e[33m$NETWORK_NAME\e[0m"
+  echo -e "       ${INFO} - Nome do Servidor: \e[33m$SERVER_NAME\e[0m"
+  echo -e "       ${INFO} - E-mail Let's Encrypt: \e[33m$EMAIL_LETSENCRYPT\e[0m"
+  echo -e "       ${INFO} - Domínio do Portainer: \e[33mhttps://${PORTAINER_DOMAIN}\e[0m"
+  echo
+  echo -e "       ${BLUE}Para verificar detalhes:${RESET}"
+  echo -e "       docker stack ps portainer"
+  echo -e "       docker stack ps traefik"
+  echo
+  echo -e "       ${INFO} - Minha Automação MilionárIA: \e[33mhttps://automilionaria.trade\e[0m"
+  echo "========================================"
+  echo
+  echo -e "       \e[31mATENÇÃO:\e[0m Você tem \e[31mAPENAS 5 minutos\e[0m para fazer seu primeiro login no Portainer."
+  echo -e "       Caso ultrapasse esse tempo, será necessário \e[31mrefazer toda a instalação.\e[0m"
+  echo
 else
-  echo -e "${YELLOW}Aviso:${RESET} TLS ainda não validado pelo SO. Prosseguindo com -k temporariamente."
-  CURL_TLS="curl -fsS -k"
+  log_error "Um ou mais serviços não estão em Running."
+  echo "Verifique com: docker stack ps portainer / traefik"
+  echo "Corrija o problema e tente novamente."
+  exit 1
 fi
-
-step "Criando conta admin no Portainer (se necessário)"
-if $CURL_TLS "https://${PORTAINER_DOMAIN}/api/status" | jq -e '.Authentication' >/dev/null 2>&1; then
-  INIT_PAYLOAD=$(jq -n --arg u "$PORTAINER_USER" --arg p "$PORTAINER_PASS" '{Username:$u, Password:$p}')
-  $CURL_TLS -H "Content-Type: application/json" -d "$INIT_PAYLOAD" \
-    "https://${PORTAINER_DOMAIN}/api/users/admin/init" >/dev/null 2>&1 || true
-  log_ok "Admin OK (ou já existia)"
-else
-  log_ok "Portainer já inicializado (ou status endpoint diferente)"
-fi
-
-# -------- 10. Status final / Dicas --------
-step "Status dos serviços"
-docker service ls | egrep 'traefik|portainer' || true
-
-echo
-echo "==============================================="
-echo -e " ${GREEN}Instalação concluída${RESET}"
-echo -e " Servidor (label): ${SERVER_NAME}"
-echo -e " Rede overlay:     ${NETWORK_NAME}"
-echo -e " Portainer:        https://${PORTAINER_DOMAIN}"
-echo -e "   Usuário:        ${PORTAINER_USER}"
-echo -e "   Senha:          (a que você informou)"
-echo "==============================================="
-echo
-echo -e "${INFO} Se usa Cloudflare, mantenha ${B}nuvem cinza${RESET} até emitir. Para AAAA (IPv6), remova se o host não atende IPv6."
-echo -e "${INFO} Diagnóstico rápido:"
-echo "  docker service logs traefik_traefik -f --since 15m"
-echo "  docker service logs portainer_portainer -f --since 15m"
-echo "  docker run --rm -v volume_swarm_certificates:/etc/traefik/letsencrypt bash:5.2 bash -lc 'ls -l /etc/traefik/letsencrypt; stat -c \"%a %n\" /etc/traefik/letsencrypt/acme.json'"
-echo "  ss -ltnp | egrep ':80|:443'"
-echo "  dig +short A ${PORTAINER_DOMAIN}; dig +short AAAA ${PORTAINER_DOMAIN}"
